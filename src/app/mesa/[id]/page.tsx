@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Campaign, campaignRepo, characterRepo } from "@/lib/storage";
+import {
+  Campaign,
+  campaignRepo,
+  characterRepo,
+  tableRepo,
+  TableMember,
+  RollLog,
+} from "@/lib/storage";
 import { Character } from "@/lib/solando/character";
 import { competencePoints, effectiveAttributes } from "@/lib/solando/character";
 import { ATTRIBUTES, rankFor } from "@/lib/solando/rules";
@@ -11,76 +18,98 @@ import { RollResult, rollAttribute } from "@/lib/solando/dice";
 import { DiceRoller } from "@/components/DiceRoller";
 import { useAuth } from "@/lib/auth";
 
-interface LogEntry {
-  id: string;
-  who: string;
-  text: string;
-  result: RollResult;
-  time: number;
-  secret?: boolean;
-}
+const REACTIONS = ["🔥", "🎯", "😂", "💀", "❤️"];
 
 export default function MesaRoomPage({ params }: { params: { id: string } }) {
-  const { profile } = useAuth();
-  const [campaign, setCampaign] = useState<Campaign | null>(null);
-  const [allChars, setAllChars] = useState<Character[]>([]);
-  const [log, setLog] = useState<LogEntry[]>([]);
-  const [secretMode, setSecretMode] = useState(false);
-  // TODO(fase Supabase): derivar do dono da mesa. Por ora, controle local.
-  const [iAmMaster, setIAmMaster] = useState(true);
+  const { user, profile } = useAuth();
+  const myId = user?.id ?? null;
 
-  async function load() {
-    const c = await campaignRepo.get(params.id);
+  const [campaign, setCampaign] = useState<Campaign | null>(null);
+  const [members, setMembers] = useState<TableMember[]>([]);
+  const [tableChars, setTableChars] = useState<Character[]>([]);
+  const [myChars, setMyChars] = useState<Character[]>([]);
+  const [rolls, setRolls] = useState<RollLog[]>([]);
+  const [secretMode, setSecretMode] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const iAmMaster = !!myId && campaign?.ownerId === myId;
+  const myMembership = members.find((m) => m.userId === myId) ?? null;
+  const myCharacter =
+    tableChars.find((c) => c.id === myMembership?.characterId) ?? null;
+
+  const loadRolls = useCallback(async () => {
+    setRolls(await tableRepo.rolls(params.id));
+  }, [params.id]);
+
+  const loadTable = useCallback(async () => {
+    const [c, mems, chars, mine] = await Promise.all([
+      campaignRepo.get(params.id),
+      tableRepo.members(params.id),
+      tableRepo.charactersInTable(params.id),
+      characterRepo.list(),
+    ]);
     setCampaign(c ?? null);
-    setAllChars(await characterRepo.list());
-  }
+    setMembers(mems);
+    setTableChars(chars);
+    setMyChars(mine);
+  }, [params.id]);
+
   useEffect(() => {
-    load();
+    (async () => {
+      setLoading(true);
+      await loadTable();
+      await loadRolls();
+      setLoading(false);
+    })();
+    const unsub = tableRepo.subscribe(params.id, () => {
+      loadRolls();
+      loadTable();
+    });
+    return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
 
-  const members = allChars.filter((c) => campaign?.characterIds.includes(c.id));
-  const outsiders = allChars.filter((c) => !campaign?.characterIds.includes(c.id));
-
-  async function addChar(id: string) {
-    if (!campaign) return;
-    const updated = {
-      ...campaign,
-      characterIds: [...campaign.characterIds, id],
-    };
-    await campaignRepo.save(updated);
-    setCampaign(updated);
-  }
-  async function removeChar(id: string) {
-    if (!campaign) return;
-    const updated = {
-      ...campaign,
-      characterIds: campaign.characterIds.filter((x) => x !== id),
-    };
-    await campaignRepo.save(updated);
-    setCampaign(updated);
+  async function chooseCharacter(charId: string) {
+    await tableRepo.join(params.id, charId || null);
+    await loadTable();
   }
 
-  function pushLog(who: string, text: string, result: RollResult, secret = false) {
-    setLog((prev) =>
-      [
-        {
-          id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          who,
-          text,
-          result,
-          time: Date.now(),
-          secret,
-        },
-        ...prev,
-      ].slice(0, 40),
-    );
+  async function leaveTable() {
+    if (!confirm("Sair desta mesa?")) return;
+    await tableRepo.leave(params.id);
+    await loadTable();
+  }
+
+  async function pushRoll(
+    character: Character | null,
+    text: string,
+    result: RollResult,
+    secret = false,
+  ) {
+    await tableRepo.addRoll({
+      tableId: params.id,
+      characterId: character?.id ?? null,
+      characterName: character?.name || profile?.displayName || "Mesa",
+      text,
+      result,
+      secret,
+    });
+    await loadRolls();
+  }
+
+  async function react(rollId: string, emoji: string) {
+    await tableRepo.toggleReaction(rollId, emoji);
+    await loadRolls();
+  }
+
+  if (loading) {
+    return <div className="py-16 text-center text-zinc-500">Carregando mesa...</div>;
   }
 
   if (!campaign) {
     return (
       <div className="py-16 text-center text-zinc-500">
-        Mesa não encontrada.{" "}
+        Mesa não encontrada ou sem acesso.{" "}
         <Link href="/mesa" className="text-mente-soft underline">
           Voltar
         </Link>
@@ -96,20 +125,12 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
             ← Mesas
           </Link>
           <h1 className="text-3xl font-black title-gradient">{campaign.name}</h1>
-          {profile && (
-            <p className="text-xs text-zinc-500">
-              na mesa como {iAmMaster ? "👑 Mestre" : "🎭"} {profile.displayName}
-            </p>
-          )}
+          <p className="text-xs text-zinc-500">
+            {iAmMaster ? "👑 Você é o mestre desta mesa" : "🎭 Você é jogador"}
+            {myCharacter ? ` — jogando com ${myCharacter.name || "sem nome"}` : ""}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setIAmMaster((v) => !v)}
-            className={`btn text-sm ${iAmMaster ? "btn-sol" : "btn-ghost"}`}
-            title="Alterna entre a visão de mestre e a de jogador"
-          >
-            {iAmMaster ? "👑 Sou o mestre" : "🎭 Sou jogador"}
-          </button>
           {iAmMaster && (
             <button
               onClick={() => setSecretMode((v) => !v)}
@@ -119,48 +140,76 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
               {secretMode ? "👁️‍🗨️ Rolagem secreta: ON" : "👁️ Rolagem secreta: OFF"}
             </button>
           )}
+          {myMembership && (
+            <button onClick={leaveTable} className="btn-ghost text-sm text-red-400">
+              Sair
+            </button>
+          )}
         </div>
       </div>
 
+      {/* Entrar / escolher personagem */}
+      <div className="card p-5">
+        <h3 className="mb-3 font-display text-lg font-bold text-zinc-100">
+          {myMembership ? "Seu personagem nesta mesa" : "Entrar na mesa"}
+        </h3>
+        <div className="flex flex-wrap items-center gap-3">
+          <select
+            className="input max-w-xs"
+            value={myMembership?.characterId ?? ""}
+            onChange={(e) => chooseCharacter(e.target.value)}
+          >
+            <option value="">
+              {iAmMaster ? "— Mestrar sem personagem —" : "— Escolha um personagem —"}
+            </option>
+            {myChars.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name || "Sem nome"}
+              </option>
+            ))}
+          </select>
+          {myChars.length === 0 && (
+            <Link href="/ficha" className="text-sm text-mente-soft underline">
+              Você ainda não tem fichas — criar uma
+            </Link>
+          )}
+        </div>
+        {members.length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-4">
+            {members.map((m) => (
+              <span
+                key={m.userId}
+                className="chip"
+                title={m.role === "owner" ? "Mestre" : "Jogador"}
+              >
+                {m.role === "owner" ? "👑" : "🎭"} {m.displayName}
+                {m.characterName ? ` · ${m.characterName}` : ""}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-        {/* Jogadores + rolagens rápidas */}
         <div className="space-y-4">
           <div className="card p-5">
             <h3 className="mb-3 font-display text-lg font-bold text-zinc-100">
-              Jogadores na mesa
+              Personagens na mesa
             </h3>
-            {members.length === 0 && (
+            {tableChars.length === 0 && (
               <p className="text-sm text-zinc-500">
-                Nenhum personagem na mesa. Adicione abaixo.
+                Nenhum personagem escolhido ainda. Escolha o seu acima.
               </p>
             )}
             <div className="space-y-3">
-              {members.map((c) => (
+              {tableChars.map((c) => (
                 <PlayerRow
                   key={c.id}
                   character={c}
-                  onRoll={pushLog}
-                  onRemove={() => removeChar(c.id)}
+                  onRoll={(text, result) => pushRoll(c, text, result)}
                 />
               ))}
             </div>
-
-            {outsiders.length > 0 && (
-              <div className="mt-4 border-t border-white/10 pt-4">
-                <p className="mb-2 text-xs text-zinc-500">Adicionar personagem:</p>
-                <div className="flex flex-wrap gap-2">
-                  {outsiders.map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => addChar(c.id)}
-                      className="chip hover:border-sol/60 hover:text-sol-soft"
-                    >
-                      + {c.name || "Sem nome"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Log de rolagens */}
@@ -170,55 +219,77 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
             </h3>
             <div className="max-h-[380px] space-y-2 overflow-y-auto pr-1">
               <AnimatePresence initial={false}>
-                {log.map((e) => {
-                  const hidden = e.secret && !iAmMaster;
-                  return (
-                    <motion.div
-                      key={e.id}
-                      initial={{ opacity: 0, y: -8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={`flex items-center justify-between rounded-xl border p-3 ${
-                        e.secret
-                          ? "border-sol/30 bg-sol/5"
-                          : "border-white/10 bg-void-950/40"
-                      }`}
-                    >
-                      {hidden ? (
-                        <div className="text-sm text-sol-soft">
-                          🔮 O Mestre rolou em segredo...
-                        </div>
-                      ) : (
-                        <>
-                          <div className="text-sm">
-                            <span className="font-semibold text-zinc-100">{e.who}</span>{" "}
-                            <span className="text-zinc-400">{e.text}</span>
-                            {e.secret && <span className="ml-1 text-[10px] text-sol-soft">(secreto)</span>}
-                            {e.result.pool.length > 1 && (
-                              <span className="ml-1 text-xs text-zinc-600">
-                                [{e.result.pool.join(", ")}]
-                              </span>
-                            )}
-                          </div>
-                          <span
-                            className={`text-xl font-black ${
-                              e.result.crit === "critico"
-                                ? "text-sol"
-                                : e.result.crit === "falha-critica"
-                                ? "text-red-500"
-                                : "text-zinc-100"
+                {rolls.map((e) => (
+                  <motion.div
+                    key={e.id}
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`rounded-xl border p-3 ${
+                      e.secret
+                        ? "border-sol/30 bg-sol/5"
+                        : "border-white/10 bg-void-950/40"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm">
+                        <span className="font-semibold text-zinc-100">
+                          {e.characterName}
+                        </span>{" "}
+                        <span className="text-zinc-400">{e.text}</span>
+                        {e.secret && (
+                          <span className="ml-1 text-[10px] text-sol-soft">
+                            (secreto)
+                          </span>
+                        )}
+                        {e.result && e.result.pool.length > 1 && (
+                          <span className="ml-1 text-xs text-zinc-600">
+                            [{e.result.pool.join(", ")}]
+                          </span>
+                        )}
+                      </div>
+                      {e.result && (
+                        <span
+                          className={`text-xl font-black ${
+                            e.result.crit === "critico"
+                              ? "text-sol"
+                              : e.result.crit === "falha-critica"
+                              ? "text-red-500"
+                              : "text-zinc-100"
+                          }`}
+                        >
+                          {e.result.total}
+                        </span>
+                      )}
+                    </div>
+                    {/* Reações */}
+                    <div className="mt-2 flex flex-wrap items-center gap-1">
+                      {REACTIONS.map((emoji) => {
+                        const users = e.reactions[emoji] ?? [];
+                        const mine = myId ? users.includes(myId) : false;
+                        return (
+                          <button
+                            key={emoji}
+                            onClick={() => react(e.id, emoji)}
+                            className={`rounded-full border px-2 py-0.5 text-xs transition ${
+                              mine
+                                ? "border-sol/60 bg-sol/10 text-sol-soft"
+                                : "border-white/10 text-zinc-500 hover:border-white/30"
                             }`}
                           >
-                            {e.result.total}
-                          </span>
-                        </>
-                      )}
-                    </motion.div>
-                  );
-                })}
+                            {emoji}
+                            {users.length > 0 && (
+                              <span className="ml-1">{users.length}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                ))}
               </AnimatePresence>
-              {log.length === 0 && (
+              {rolls.length === 0 && (
                 <p className="text-sm text-zinc-500">
-                  As rolagens da mesa aparecerão aqui.
+                  As rolagens da mesa aparecerão aqui em tempo real.
                 </p>
               )}
             </div>
@@ -229,8 +300,8 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
         <aside className="space-y-6 lg:sticky lg:top-20 lg:self-start">
           <DiceRoller
             onRoll={(r) =>
-              pushLog(
-                iAmMaster && secretMode ? "👑 Mestre" : profile?.displayName ?? "Mesa",
+              pushRoll(
+                myCharacter,
                 "rolou " + (r.label ?? ""),
                 r,
                 iAmMaster && secretMode,
@@ -246,11 +317,9 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
 function PlayerRow({
   character,
   onRoll,
-  onRemove,
 }: {
   character: Character;
-  onRoll: (who: string, text: string, result: RollResult) => void;
-  onRemove: () => void;
+  onRoll: (text: string, result: RollResult) => void;
 }) {
   const comp = competencePoints(character);
   const eff = effectiveAttributes(character);
@@ -258,12 +327,9 @@ function PlayerRow({
   function rollAttr(attrKey: (typeof ATTRIBUTES)[number]["key"], label: string) {
     const r = rollAttribute(eff[attrKey], 0, 0, label);
     if (r.falhaAbsoluta) {
-      onRoll(character.name || "Jogador", `${label}: FALHA ABSOLUTA (Rank F)`, {
-        ...r,
-        total: 0,
-      });
+      onRoll(`${label}: FALHA ABSOLUTA (Rank F)`, { ...r, total: 0 });
     } else {
-      onRoll(character.name || "Jogador", `testou ${label}`, r);
+      onRoll(`testou ${label}`, r);
     }
   }
 
@@ -272,21 +338,16 @@ function PlayerRow({
       className="rounded-xl border border-white/10 bg-void-950/40 p-3"
       style={{ borderColor: `${character.accent}33` }}
     >
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div
-            className="grid h-8 w-8 place-items-center rounded-lg text-sm font-black text-void-950"
-            style={{ background: character.accent }}
-          >
-            {character.name.charAt(0).toUpperCase() || "?"}
-          </div>
-          <span className="font-semibold text-zinc-100">
-            {character.name || "Sem nome"}
-          </span>
+      <div className="mb-2 flex items-center gap-2">
+        <div
+          className="grid h-8 w-8 place-items-center rounded-lg text-sm font-black text-void-950"
+          style={{ background: character.accent }}
+        >
+          {character.name.charAt(0).toUpperCase() || "?"}
         </div>
-        <button className="text-xs text-zinc-500 hover:text-red-400" onClick={onRemove}>
-          remover
-        </button>
+        <span className="font-semibold text-zinc-100">
+          {character.name || "Sem nome"}
+        </span>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {ATTRIBUTES.map((a) => {

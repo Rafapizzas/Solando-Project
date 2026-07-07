@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Campaign, campaignRepo, characterRepo } from "@/lib/storage";
+import { Campaign, campaignRepo, tableRepo } from "@/lib/storage";
 import { Character, derivedStats, effectiveAttributes, forceRank } from "@/lib/solando/character";
 import { analyzeCharacter } from "@/lib/solando/balance";
 import { ATTRIBUTES, rankFor } from "@/lib/solando/rules";
@@ -21,10 +21,19 @@ export default function MestrePage() {
     (async () => {
       const cs = await campaignRepo.list();
       setCampaigns(cs);
-      setChars(await characterRepo.list());
       if (cs[0]) setSelected(cs[0].id);
     })();
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!selected) {
+      setChars([]);
+      return;
+    }
+    (async () => {
+      setChars(await tableRepo.charactersInTable(selected));
+    })();
+  }, [selected]);
 
   if (ready && !isAuthenticated) {
     return (
@@ -44,7 +53,7 @@ export default function MestrePage() {
   }
 
   const campaign = campaigns.find((c) => c.id === selected);
-  const members = chars.filter((c) => campaign?.characterIds.includes(c.id));
+  const members = chars;
 
   return (
     <div className="space-y-6">
