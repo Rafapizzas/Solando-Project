@@ -19,23 +19,20 @@ export function DevSignature() {
   if (isHome) {
     return (
       <footer className="mt-12">
-        <div className="sig-shine relative mx-auto flex max-w-6xl items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black/80 px-4 py-4">
+        <div className="sig-shine relative mx-auto flex max-w-6xl items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black/80 px-4 py-9">
           {/* Textura de meio-tom (mangá) */}
           <div className="halftone pointer-events-none absolute inset-0 opacity-[0.06]" />
-          {/* Kanji 卍解 (Bankai) como marca-d'água animada atrás do nome */}
-          <motion.span
-            aria-hidden
-            className="pointer-events-none absolute inset-0 flex select-none items-center justify-center font-ink text-6xl leading-none text-white/[0.07]"
-            animate={{ opacity: [0.05, 0.11, 0.05], scale: [1, 1.03, 1] }}
-            transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-          >
-            卍解
-          </motion.span>
-          <div className="relative flex flex-col items-center">
-            <span className="text-[10px] uppercase tracking-[0.4em] text-zinc-600">
-              Solando
-            </span>
-            <span className="font-ink text-2xl font-semibold tracking-wide text-[#8b5cf6] drop-shadow-[0_0_10px_rgba(124,58,237,0.35)]">
+          {/* Assinatura = kanji 卍解 (Bankai) ATRÁS + lettering "Rafa Pizzas" na frente */}
+          <div className="relative flex items-center justify-center">
+            <motion.span
+              aria-hidden
+              className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 select-none font-ink text-7xl leading-none text-[#7c3aed] drop-shadow-[0_0_28px_rgba(124,58,237,0.55)] sm:text-8xl"
+              animate={{ opacity: [0.22, 0.4, 0.22], scale: [1, 1.04, 1] }}
+              transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+            >
+              卍解
+            </motion.span>
+            <span className="relative font-ink text-3xl font-semibold tracking-wide text-[#a985ff] drop-shadow-[0_0_14px_rgba(124,58,237,0.6)] sm:text-4xl">
               Rafa Pizzas
             </span>
           </div>
