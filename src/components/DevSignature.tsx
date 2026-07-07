@@ -19,9 +19,12 @@ export function DevSignature() {
   if (isHome) {
     return (
       <footer className="mt-12">
-        <div className="sig-shine relative mx-auto flex max-w-6xl items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black/80 px-4 py-9">
+        <div className="sig-shine relative mx-auto flex max-w-6xl flex-col items-center justify-center gap-1.5 overflow-hidden rounded-2xl border border-white/10 bg-black/80 px-4 py-9">
           {/* Textura de meio-tom (mangá) */}
           <div className="halftone pointer-events-none absolute inset-0 opacity-[0.06]" />
+          <span className="relative text-[10px] uppercase tracking-[0.4em] text-zinc-500">
+            Desenvolvido por
+          </span>
           {/* Assinatura = kanji 卍解 (Bankai) ATRÁS + lettering "Rafa Pizzas" na frente */}
           <div className="relative flex items-center justify-center">
             <motion.span
