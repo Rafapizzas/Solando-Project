@@ -120,6 +120,10 @@ export interface Character {
   /** Cor de destaque escolhida pelo jogador (personalização). */
   accent: string;
   avatarUrl?: string;
+  /** Vida atual (status em jogo). undefined = cheia (usa o máximo derivado). */
+  currentVida?: number;
+  /** Entropia/mana atual (status em jogo). undefined = cheia. */
+  currentEntropia?: number;
   createdAt: number;
   updatedAt: number;
 }

@@ -357,6 +357,12 @@ function PlayerRow({
         <span className="font-semibold text-zinc-100">
           {character.name || "Sem nome"}
         </span>
+        <Link
+          href={`/ficha/${character.id}/ver`}
+          className="ml-auto text-xs text-mente-soft underline"
+        >
+          Ver ficha
+        </Link>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {ATTRIBUTES.map((a) => {

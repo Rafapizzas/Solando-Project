@@ -105,6 +105,9 @@ export default function FichasPage() {
                   <Link href={`/ficha/${c.id}`} className="btn-ghost flex-1 text-sm">
                     Abrir
                   </Link>
+                  <Link href={`/ficha/${c.id}/ver`} className="btn-ghost flex-1 text-sm">
+                    Ver
+                  </Link>
                   <button
                     className="btn-ghost !px-3 text-red-400"
                     onClick={() => remove(c.id)}
