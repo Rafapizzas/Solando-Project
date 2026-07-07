@@ -1,19 +1,20 @@
 /**
- * DevSignature — assinatura sutil do desenvolvedor no rodapé.
- * Fundo preto discreto, kanji 卍解 (Bankai) pequeno em tinta e o nome
- * "Rafa Pizzas" em roxo escuro. Ocupa pouco espaço (uma linha).
+ * DevSignature — assinatura sutil do desenvolvedor, fixa no rodapé.
+ * O kanji 匠 (takumi, "artesão/mestre") aparece como marca-d'água ATRÁS do
+ * lettering "Rafa Pizzas", criando identidade sem virar uma frase legível.
+ * A barra escura permanece sempre no fim da página.
  */
 export function DevSignature() {
   return (
     <footer className="mt-10">
-      <div className="relative mx-auto flex max-w-6xl items-center justify-center gap-2.5 rounded-xl bg-black/80 px-4 py-2.5">
-        <span aria-hidden className="font-ink text-sm text-white/25">
-          卍解
+      <div className="relative mx-auto flex max-w-6xl items-center justify-center overflow-hidden rounded-xl bg-black/80 px-4 py-3">
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 flex select-none items-center justify-center font-ink text-5xl leading-none text-white/[0.06]"
+        >
+          匠
         </span>
-        <span className="text-[10px] uppercase tracking-[0.3em] text-zinc-600">
-          por
-        </span>
-        <span className="font-ink text-base font-semibold text-[#7c3aed]">
+        <span className="relative font-ink text-lg font-semibold tracking-wide text-[#7c3aed]">
           Rafa Pizzas
         </span>
       </div>

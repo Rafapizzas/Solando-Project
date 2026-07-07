@@ -11,7 +11,7 @@ import { clientKey, rateLimit } from "@/lib/ai/rateLimit";
  * rota devolve `fallback: true` e a UI orienta a consultar o manual manualmente.
  */
 
-const MODEL = "gemini-1.5-flash";
+const MODEL = "gemini-flash-latest";
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
 interface ChatMessage {
