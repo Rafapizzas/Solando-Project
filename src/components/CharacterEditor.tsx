@@ -7,6 +7,7 @@ import { Character, newCharacter } from "@/lib/solando/character";
 import { Attributes } from "@/lib/solando/character";
 import { characterRepo, uploadCharacterAvatar } from "@/lib/storage";
 import { isSupabaseEnabled } from "@/lib/supabase/client";
+import { hydrateSharedContent } from "@/lib/solando/customContent";
 import { AttributeAllocator } from "./AttributeAllocator";
 import { BalanceAdvisor } from "./BalanceAdvisor";
 import { DerivedStatsPanel } from "./DerivedStatsPanel";
@@ -47,6 +48,7 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   const [saved, setSaved] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [, bumpContent] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -57,6 +59,8 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
       } else {
         setCharacter(newCharacter());
       }
+      await hydrateSharedContent();
+      if (active) bumpContent((n) => n + 1);
     })();
     return () => {
       active = false;

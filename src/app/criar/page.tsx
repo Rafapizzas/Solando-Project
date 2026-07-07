@@ -9,6 +9,7 @@ import {
   CustomRace,
   getCustomClasses,
   getCustomRaces,
+  hydrateSharedContent,
   removeCustomClass,
   removeCustomRace,
   saveCustomClass,
@@ -96,7 +97,11 @@ function RaceForge() {
   function reload() {
     setList(getCustomRaces());
   }
-  useEffect(reload, []);
+  useEffect(() => {
+    reload();
+    void hydrateSharedContent().then(reload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function save() {
     if (!name.trim()) return;
@@ -190,7 +195,11 @@ function ClassForge() {
   function reload() {
     setList(getCustomClasses());
   }
-  useEffect(reload, []);
+  useEffect(() => {
+    reload();
+    void hydrateSharedContent().then(reload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function save() {
     if (!name.trim()) return;

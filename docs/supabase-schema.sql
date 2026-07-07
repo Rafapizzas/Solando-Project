@@ -105,6 +105,17 @@ create table if not exists public.custom_classes (
 alter table public.custom_races enable row level security;
 alter table public.custom_classes enable row level security;
 
+-- Unicidade por (dono, slug): permite "upsert" idempotente ao publicar/atualizar
+-- uma raça/classe compartilhada. Idempotente (safe para rodar novamente).
+do $$ begin
+  alter table public.custom_races
+    add constraint custom_races_owner_slug_key unique (owner_id, slug);
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table public.custom_classes
+    add constraint custom_classes_owner_slug_key unique (owner_id, slug);
+exception when duplicate_object then null; end $$;
+
 drop policy if exists races_owner_all on public.custom_races;
 create policy races_owner_all on public.custom_races
   for all to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());

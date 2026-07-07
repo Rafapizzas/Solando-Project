@@ -10,6 +10,7 @@
 import { AttributeKey } from "./rules";
 import { RACES, RaceDef } from "./races";
 import { CLASSES, ClassDef } from "./classes";
+import { supabase, isSupabaseEnabled } from "../supabase/client";
 
 export type AttrBonus = Partial<Record<AttributeKey, number>>;
 
@@ -68,31 +69,113 @@ function write<T>(key: string, value: T): void {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
-export function getCustomRaces(): CustomRace[] {
+// --- Cache compartilhado (raças/classes públicas vindas do Supabase) ---------
+// Os getters abaixo são SÍNCRONOS (usados em vários pontos do app). Para trazer o
+// conteúdo compartilhado sem quebrar essa API, guardamos um cache em memória
+// hidratado por `hydrateSharedContent()` (chamado no load). Enquanto não hidrata,
+// os getters devolvem apenas o conteúdo local.
+let sharedRaces: CustomRace[] = [];
+let sharedClasses: CustomClass[] = [];
+
+function localRaces(): CustomRace[] {
   return read<CustomRace[]>(KEY_RACES, []);
 }
-export function getCustomClasses(): CustomClass[] {
+function localClasses(): CustomClass[] {
   return read<CustomClass[]>(KEY_CLASSES, []);
 }
+
+function mergeById<T extends { id: string }>(primary: T[], extra: T[]): T[] {
+  const seen = new Set(primary.map((x) => x.id));
+  return [...primary, ...extra.filter((x) => !seen.has(x.id))];
+}
+
+async function currentUid(): Promise<string | null> {
+  if (!isSupabaseEnabled() || !supabase) return null;
+  const { data } = await supabase.auth.getUser();
+  return data.user?.id ?? null;
+}
+
+async function publishContent(
+  table: "custom_races" | "custom_classes",
+  item: CustomRace | CustomClass,
+): Promise<void> {
+  const uid = await currentUid();
+  if (!uid || !supabase) return;
+  await supabase
+    .from(table)
+    .upsert(
+      { owner_id: uid, slug: item.id, data: item, is_public: true },
+      { onConflict: "owner_id,slug" },
+    );
+}
+
+async function unpublishContent(
+  table: "custom_races" | "custom_classes",
+  slug: string,
+): Promise<void> {
+  const uid = await currentUid();
+  if (!uid || !supabase) return;
+  await supabase.from(table).delete().eq("owner_id", uid).eq("slug", slug);
+}
+
+/**
+ * Carrega raças/classes públicas do Supabase para o cache em memória. Idempotente
+ * e seguro: se o Supabase não estiver configurado, não faz nada. Chame no load da
+ * UI que lista raças/classes e recarregue a lista depois.
+ */
+export async function hydrateSharedContent(): Promise<void> {
+  if (!isSupabaseEnabled() || !supabase) return;
+  const [races, classes] = await Promise.all([
+    supabase.from("custom_races").select("data").eq("is_public", true),
+    supabase.from("custom_classes").select("data").eq("is_public", true),
+  ]);
+  if (!races.error && races.data) {
+    sharedRaces = races.data
+      .map((r) => r.data as CustomRace)
+      .filter((r) => r && r.id);
+  }
+  if (!classes.error && classes.data) {
+    sharedClasses = classes.data
+      .map((c) => c.data as CustomClass)
+      .filter((c) => c && c.id);
+  }
+}
+
+export function getCustomRaces(): CustomRace[] {
+  return mergeById(localRaces(), sharedRaces);
+}
+export function getCustomClasses(): CustomClass[] {
+  return mergeById(localClasses(), sharedClasses);
+}
 export function saveCustomRace(race: CustomRace): void {
-  const all = getCustomRaces();
+  const all = localRaces();
   const idx = all.findIndex((r) => r.id === race.id);
   if (idx >= 0) all[idx] = race;
   else all.push(race);
   write(KEY_RACES, all);
+  void publishContent("custom_races", race);
 }
 export function saveCustomClass(klass: CustomClass): void {
-  const all = getCustomClasses();
+  const all = localClasses();
   const idx = all.findIndex((c) => c.id === klass.id);
   if (idx >= 0) all[idx] = klass;
   else all.push(klass);
   write(KEY_CLASSES, all);
+  void publishContent("custom_classes", klass);
 }
 export function removeCustomRace(id: string): void {
-  write(KEY_RACES, getCustomRaces().filter((r) => r.id !== id));
+  write(
+    KEY_RACES,
+    localRaces().filter((r) => r.id !== id),
+  );
+  void unpublishContent("custom_races", id);
 }
 export function removeCustomClass(id: string): void {
-  write(KEY_CLASSES, getCustomClasses().filter((c) => c.id !== id));
+  write(
+    KEY_CLASSES,
+    localClasses().filter((c) => c.id !== id),
+  );
+  void unpublishContent("custom_classes", id);
 }
 
 // --- Resolução (built-in + custom) -----------------------------------------
