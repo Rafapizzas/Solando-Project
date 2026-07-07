@@ -26,10 +26,10 @@ export function DevSignature() {
             Desenvolvido por
           </span>
           {/* Assinatura = kanji 卍解 (Bankai) ATRÁS + lettering "Rafa Pizzas" na frente */}
-          <div className="relative flex items-center justify-center">
+          <div className="relative inline-flex items-center justify-center px-8 py-2">
             <motion.span
               aria-hidden
-              className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 select-none font-ink text-7xl leading-none text-[#7c3aed] drop-shadow-[0_0_28px_rgba(124,58,237,0.55)] sm:text-8xl"
+              className="pointer-events-none absolute inset-0 grid select-none place-items-center font-ink text-6xl leading-none text-[#7c3aed] drop-shadow-[0_0_28px_rgba(124,58,237,0.55)] sm:text-7xl"
               animate={{ opacity: [0.22, 0.4, 0.22], scale: [1, 1.04, 1] }}
               transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
             >

@@ -317,6 +317,12 @@ export function RulesConsultant() {
         </form>
 
         {note && <p className="text-xs text-sol-soft">{note}</p>}
+
+        <p className="flex items-center justify-center gap-1.5 text-center text-[11px] text-zinc-500">
+          <span aria-hidden>🔮</span>
+          Potencializado por IA (Google Gemini). O Arquimago pode se enganar — confira
+          sempre no manual oficial.
+        </p>
       </div>
     </div>
   );
