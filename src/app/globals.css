@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: "Cinzel", Georgia, serif;
+  --font-body: "Inter", system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-void-950 text-zinc-200 font-body antialiased;
+    background-image:
+      radial-gradient(circle at 15% -10%, rgba(168, 85, 247, 0.14), transparent 40%),
+      radial-gradient(circle at 85% 0%, rgba(34, 211, 238, 0.12), transparent 42%),
+      radial-gradient(circle at 50% 120%, rgba(250, 204, 21, 0.1), transparent 45%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+  h1, h2, h3 {
+    @apply font-display tracking-wide;
+  }
+  ::selection {
+    @apply bg-mente/40 text-white;
+  }
+  /* Scrollbar temática */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-void-900;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-void-600 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-mente-deep;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-white/10 bg-void-900/70 backdrop-blur-sm shadow-lg;
+  }
+  .card-glow {
+    @apply card ring-1 ring-white/5 hover:ring-mente/40 transition-all duration-300;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-semibold
+      transition-all duration-200 active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none;
+  }
+  .btn-primary {
+    @apply btn bg-gradient-to-r from-mente-deep via-mente to-mente-soft text-white shadow-glow
+      hover:brightness-110 hover:scale-[1.03];
+  }
+  .btn-sol {
+    @apply btn bg-gradient-to-r from-sol-deep via-sol to-sol-soft text-void-950 shadow-glow-sol
+      hover:brightness-110 hover:scale-[1.03];
+  }
+  .btn-ghost {
+    @apply btn border border-white/15 bg-white/5 text-zinc-200 hover:bg-white/10 hover:border-white/30;
+  }
+  .input {
+    @apply w-full rounded-xl border border-white/10 bg-void-800/80 px-3.5 py-2.5 text-zinc-100
+      outline-none transition placeholder:text-zinc-500 focus:border-mente/60 focus:ring-2
+      focus:ring-mente/30;
+  }
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-zinc-400;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1
+      text-xs font-medium;
+  }
+  .title-gradient {
+    @apply bg-gradient-to-r from-mente-soft via-sol-soft to-alma-soft bg-clip-text text-transparent;
+    background-size: 200% auto;
+    @apply animate-shimmer;
+  }
+  /* Card com brilho reativo ao hover — mais "vibe" */
+  .card-vibe {
+    @apply card transition-all duration-300 hover:-translate-y-0.5 hover:ring-1 hover:ring-mente/50
+      hover:shadow-glow;
+  }
+  /* Borda com gradiente animado */
+  .border-flow {
+    position: relative;
+    background:
+      linear-gradient(var(--tw-gradient-stops)) padding-box,
+      linear-gradient(120deg, #a855f7, #22d3ee, #facc15, #a855f7) border-box;
+    background-size: 200% 200%;
+    border: 1px solid transparent;
+    @apply animate-borderFlow;
+  }
+}
+
+/* Rune / glow decorativo reutilizável */
+.glass-panel {
+  background: linear-gradient(
+    145deg,
+    rgba(30, 24, 56, 0.6),
+    rgba(12, 10, 23, 0.75)
+  );
+}
