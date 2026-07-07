@@ -285,6 +285,45 @@ create policy feedback_insert on public.feedback
 
 create index if not exists feedback_created_idx on public.feedback (created_at desc);
 
+-- Status do feedback (para marcar erros como resolvidos etc.).
+alter table public.feedback
+  add column if not exists status text not null default 'aberto'
+  check (status in ('aberto', 'em_analise', 'resolvido', 'fechado'));
+
+-- VIEW pública: expõe só colunas seguras (NUNCA o e-mail de contato). O mural
+-- lê daqui; o e-mail fica privado (só o servidor via service_role o acessa).
+create or replace view public.feedback_public as
+  select id, created_at, category, rating, message, status, profile_name
+  from public.feedback;
+
+grant select on public.feedback_public to anon, authenticated;
+
+-- ----------------------------------------------------------------------------
+-- FEEDBACK_COMMENTS: conversa pública sobre cada feedback.
+-- Leitura pública; inserção só pelo servidor (service_role), que valida o
+-- usuário logado e define is_admin — impede falsificar o selo de admin.
+-- ----------------------------------------------------------------------------
+create table if not exists public.feedback_comments (
+  id uuid primary key default gen_random_uuid(),
+  feedback_id uuid not null references public.feedback (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  author_id uuid references auth.users (id) on delete set null,
+  author_name text not null default 'Aventureiro',
+  body text not null check (char_length(body) between 1 and 2000),
+  is_admin boolean not null default false
+);
+
+alter table public.feedback_comments enable row level security;
+
+-- Qualquer um LÊ os comentários (mural público).
+drop policy if exists fc_read on public.feedback_comments;
+create policy fc_read on public.feedback_comments
+  for select to anon, authenticated using (true);
+
+-- Sem policy de insert: só o service_role (rota /api/feedback/comment) escreve.
+
+create index if not exists fc_feedback_idx on public.feedback_comments (feedback_id, created_at);
+
 -- Atualizar (reações): membros da mesa podem atualizar o campo de reações.
 drop policy if exists rolls_update on public.roll_logs;
 create policy rolls_update on public.roll_logs

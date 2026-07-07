@@ -14,6 +14,7 @@ const baseLinks = [
   { href: "/manual", label: "Manual" },
   { href: "/arquimago", label: "Arquimago" },
   { href: "/comunidade", label: "Comunidade" },
+  { href: "/feedback", label: "Mural" },
   { href: "/guia", label: "Guia" },
   { href: "/criar", label: "Forjar" },
 ];
