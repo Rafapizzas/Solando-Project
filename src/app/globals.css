@@ -5,6 +5,7 @@
 :root {
   --font-display: "Cinzel", Georgia, serif;
   --font-body: "Inter", system-ui, sans-serif;
+  --font-ink: "Zen Kurenaido", "Cinzel", serif;
 }
 
 @layer base {
@@ -105,4 +106,55 @@
     rgba(30, 24, 56, 0.6),
     rgba(12, 10, 23, 0.75)
   );
+}
+
+/* ------------------------------------------------------------------ *
+ * Toques visuais estilo mangá / tinta japonesa (sumi-e) — mantendo a
+ * identidade do Solando (roxo/ciano/dourado sobre o void).
+ * ------------------------------------------------------------------ */
+
+/* Fonte pincel/tinta para assinaturas e destaques temáticos. */
+.font-ink {
+  font-family: var(--font-ink), serif;
+}
+
+/* Trama de meio-tom (halftone) típica de mangá — use com baixa opacidade. */
+.halftone {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.9) 1px, transparent 1.4px);
+  background-size: 6px 6px;
+}
+
+/* Painel com "borda de tinta": canto marcado como quadro de mangá. */
+.ink-panel {
+  position: relative;
+}
+.ink-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.5), transparent 45%, rgba(34, 211, 238, 0.4));
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Título de "capítulo" com linhas de velocidade (speed lines) atrás. */
+.manga-title {
+  position: relative;
+  display: inline-block;
+}
+.manga-title::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  height: 3px;
+  background: linear-gradient(90deg, #a855f7, #22d3ee 40%, transparent);
+  border-radius: 999px;
 }

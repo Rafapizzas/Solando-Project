@@ -16,6 +16,7 @@ import { competencePoints, effectiveAttributes } from "@/lib/solando/character";
 import { ATTRIBUTES, rankFor } from "@/lib/solando/rules";
 import { RollResult, rollAttribute } from "@/lib/solando/dice";
 import { DiceRoller } from "@/components/DiceRoller";
+import { MesaAssistant } from "@/components/MesaAssistant";
 import { useAuth } from "@/lib/auth";
 
 const REACTIONS = ["🔥", "🎯", "😂", "💀", "❤️"];
@@ -36,6 +37,12 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
   const myMembership = members.find((m) => m.userId === myId) ?? null;
   const myCharacter =
     tableChars.find((c) => c.id === myMembership?.characterId) ?? null;
+
+  const lastRoll = rolls[0]
+    ? `${rolls[0].characterName} ${rolls[0].text}${
+        rolls[0].result ? ` = ${rolls[0].result.total}` : ""
+      }`
+    : undefined;
 
   const loadRolls = useCallback(async () => {
     setRolls(await tableRepo.rolls(params.id));
@@ -308,6 +315,7 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
               )
             }
           />
+          <MesaAssistant lastRoll={lastRoll} />
         </aside>
       </div>
     </div>

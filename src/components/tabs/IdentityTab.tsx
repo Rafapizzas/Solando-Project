@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Character } from "@/lib/solando/character";
 import { ENTROPY_SOURCES, ATTRIBUTES } from "@/lib/solando/rules";
+import { NameLoreForge } from "@/components/NameLoreForge";
 import {
   allRaces,
   allClasses,
@@ -51,6 +52,18 @@ export function IdentityTab({ character, patch }: TabProps) {
           + Criar raça/classe
         </Link>
       </div>
+
+      <NameLoreForge
+        raceName={race?.name ?? ""}
+        onPickName={(name) => patch({ name })}
+        onLore={(lore) =>
+          patch({
+            notes: character.notes
+              ? `${character.notes}\n\n${lore}`
+              : lore,
+          })
+        }
+      />
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label className="label">Raça</label>

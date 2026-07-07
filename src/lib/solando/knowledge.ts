@@ -89,3 +89,25 @@ export function buildManualContext(): string {
     "\n== EFEITOS DE SKILL (Grimório) ==\n" + efeitos,
   ].join("\n");
 }
+
+/**
+ * Contexto mais enxuto para geração de personagens/NPCs: regras nucleares +
+ * lista de raças, classes e fontes de Entropia (sem talentos/competências
+ * detalhados), suficiente para a IA propor builds coerentes com o sistema.
+ */
+export function buildCreationContext(): string {
+  const racas = RACES.map((r) => `- ${r.name}: ${r.lore}`).join("\n");
+  const classes = CLASSES.filter((c) => !c.secret)
+    .map((c) => `- ${c.name} (${c.role})`)
+    .join("\n");
+  const fontes = ENTROPY_SOURCES.map(
+    (f) => `- ${f.label} (${f.spectrumLabel})`,
+  ).join("\n");
+
+  return [
+    coreRules(),
+    "\n== RAÇAS DISPONÍVEIS ==\n" + racas,
+    "\n== CLASSES DISPONÍVEIS ==\n" + classes,
+    "\n== FONTES DE ENTROPIA ==\n" + fontes,
+  ].join("\n");
+}

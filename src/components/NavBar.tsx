@@ -9,6 +9,7 @@ const baseLinks = [
   { href: "/ficha", label: "Fichas" },
   { href: "/mesa", label: "Mesas" },
   { href: "/manual", label: "Manual" },
+  { href: "/arquimago", label: "Arquimago" },
   { href: "/criar", label: "Forjar" },
 ];
 

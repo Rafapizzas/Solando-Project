@@ -12,6 +12,7 @@ import {
 } from "@/lib/solando/character";
 import { ATTRIBUTES } from "@/lib/solando/rules";
 import { resolveRace, resolveClass } from "@/lib/solando/customContent";
+import { ExplainSheet } from "@/components/ExplainSheet";
 
 /**
  * Preview consultável de uma ficha (link compartilhável).
@@ -123,6 +124,19 @@ export default function VerFichaPage({ params }: { params: { id: string } }) {
   const currentVida = character.currentVida ?? derived.vida;
   const currentEntropia = character.currentEntropia ?? derived.entropia;
 
+  const aiSummary = [
+    `Nome: ${character.name || "Sem nome"}`,
+    `Raça: ${race?.name ?? "—"} | Classe: ${klass?.name ?? "—"} | Nível: ${character.level} | Força: ${forceRank(character).rank}`,
+    `Atributos: ${ATTRIBUTES.map((d) => `${d.short} ${attrs[d.key]}`).join(", ")}`,
+    `Vida ${derived.vida}, Sanidade ${derived.sanidade}, Entropia ${derived.entropia}`,
+    character.skills.length
+      ? `Skills: ${character.skills.map((s) => s.name).join(", ")}`
+      : "Skills: nenhuma",
+    character.conditions.length
+      ? `Condições: ${character.conditions.map((c) => c.name).join(", ")}`
+      : "Condições: nenhuma",
+  ].join("\n");
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       {/* Cabeçalho */}
@@ -186,8 +200,7 @@ export default function VerFichaPage({ params }: { params: { id: string } }) {
 
       {/* Atributos */}
       <section className="card">
-        <h2 className="mb-3 text-lg font-bold text-zinc-200">Atributos</h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <h2 className="mb-3 text-lg font-bold text-zinc-200">Atributos</h2>        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {ATTRIBUTES.map((def) => (
             <div key={def.key} className="rounded-lg bg-void-950/50 p-3 text-center">
               <div className="text-xl font-black text-zinc-100">
@@ -251,6 +264,8 @@ export default function VerFichaPage({ params }: { params: { id: string } }) {
           </ul>
         </section>
       )}
+
+      <ExplainSheet summary={aiSummary} />
     </div>
   );
 }

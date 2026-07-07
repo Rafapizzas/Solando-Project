@@ -1,5 +1,4 @@
 import { Compendium } from "@/components/Compendium";
-import { RulesConsultant } from "@/components/RulesConsultant";
 
 export default function ManualPage() {
   return (
@@ -11,7 +10,6 @@ export default function ManualPage() {
           competências e como criar suas skills.
         </p>
       </div>
-      <RulesConsultant />
       <Compendium />
     </div>
   );

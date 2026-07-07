@@ -71,7 +71,7 @@ export function RulesConsultant() {
         <span className="text-xl">🧙‍♂️</span>
         <div>
           <h2 className="font-display text-lg font-bold text-zinc-100">
-            Consultor de Regras
+            Arquimago Solador das Regras
           </h2>
           <p className="text-xs text-zinc-500">
             Tire dúvidas do manual — respostas baseadas nas regras oficiais.
@@ -96,7 +96,7 @@ export function RulesConsultant() {
               }`}
             >
               <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-500">
-                {m.role === "user" ? "Você" : "Consultor"}
+                {m.role === "user" ? "Você" : "Arquimago"}
               </div>
               <p className="whitespace-pre-wrap">{m.text}</p>
             </motion.div>

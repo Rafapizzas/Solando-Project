@@ -7,6 +7,7 @@ import { characterRepo } from "@/lib/storage";
 import { analyzeCharacter } from "@/lib/solando/balance";
 import { findRace } from "@/lib/solando/races";
 import { findClass } from "@/lib/solando/classes";
+import { AICharacterForge } from "@/components/AICharacterForge";
 
 export default function FichasPage() {
   const [characters, setCharacters] = useState<Character[] | null>(null);
@@ -36,6 +37,8 @@ export default function FichasPage() {
           + Nova ficha
         </Link>
       </div>
+
+      <AICharacterForge />
 
       {characters === null ? (
         <div className="py-16 text-center text-zinc-500">Carregando...</div>

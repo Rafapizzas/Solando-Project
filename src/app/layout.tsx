@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { Cinzel, Inter } from "next/font/google";
+import { Cinzel, Inter, Zen_Kurenaido } from "next/font/google";
 import "./globals.css";
 import { NavBar } from "@/components/NavBar";
 import { AuroraBackground } from "@/components/AuroraBackground";
+import { DevSignature } from "@/components/DevSignature";
 import { AuthProvider } from "@/lib/auth";
 
 const display = Cinzel({
@@ -14,6 +15,13 @@ const display = Cinzel({
 const body = Inter({
   subsets: ["latin"],
   variable: "--font-body",
+});
+
+// Fonte estilo pincel/tinta japonesa (sumi-e) para a assinatura e toques manga.
+const ink = Zen_Kurenaido({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-ink",
 });
 
 export const metadata: Metadata = {
@@ -28,7 +36,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR" className={`${display.variable} ${body.variable}`}>
+    <html
+      lang="pt-BR"
+      className={`${display.variable} ${body.variable} ${ink.variable}`}
+    >
       <body>
         <AuthProvider>
           <AuroraBackground />
@@ -36,6 +47,7 @@ export default function RootLayout({
           <main className="mx-auto w-full max-w-6xl px-4 pb-24 pt-6 sm:px-6">
             {children}
           </main>
+          <DevSignature />
         </AuthProvider>
       </body>
     </html>
