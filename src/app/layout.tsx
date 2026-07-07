@@ -4,7 +4,11 @@ import "./globals.css";
 import { NavBar } from "@/components/NavBar";
 import { AuroraBackground } from "@/components/AuroraBackground";
 import { DevSignature } from "@/components/DevSignature";
+import { OpeningSplash } from "@/components/OpeningSplash";
+import { ProfileGate } from "@/components/ProfileGate";
 import { AuthProvider } from "@/lib/auth";
+import { ProfileProvider } from "@/lib/profiles";
+import { RollFxProvider } from "@/lib/rollFx";
 
 const display = Cinzel({
   subsets: ["latin"],
@@ -42,12 +46,18 @@ export default function RootLayout({
     >
       <body>
         <AuthProvider>
-          <AuroraBackground />
-          <NavBar />
-          <main className="mx-auto w-full max-w-6xl px-4 pb-24 pt-6 sm:px-6">
-            {children}
-          </main>
-          <DevSignature />
+          <ProfileProvider>
+            <RollFxProvider>
+              <AuroraBackground />
+              <OpeningSplash />
+              <ProfileGate />
+              <NavBar />
+              <main className="mx-auto w-full max-w-6xl px-4 pb-24 pt-6 sm:px-6">
+                {children}
+              </main>
+              <DevSignature />
+            </RollFxProvider>
+          </ProfileProvider>
         </AuthProvider>
       </body>
     </html>

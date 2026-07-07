@@ -18,11 +18,13 @@ import { RollResult, rollAttribute } from "@/lib/solando/dice";
 import { DiceRoller } from "@/components/DiceRoller";
 import { MesaAssistant } from "@/components/MesaAssistant";
 import { useAuth } from "@/lib/auth";
+import { useRollFx } from "@/lib/rollFx";
 
 const REACTIONS = ["🔥", "🎯", "😂", "💀", "❤️"];
 
 export default function MesaRoomPage({ params }: { params: { id: string } }) {
   const { user, profile } = useAuth();
+  const fx = useRollFx();
   const myId = user?.id ?? null;
 
   const [campaign, setCampaign] = useState<Campaign | null>(null);
@@ -93,6 +95,7 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
     result: RollResult,
     secret = false,
   ) {
+    if (result?.crit) fx.play(result.crit);
     await tableRepo.addRoll({
       tableId: params.id,
       characterId: character?.id ?? null,

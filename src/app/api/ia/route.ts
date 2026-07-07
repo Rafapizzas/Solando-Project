@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { callGemini, type GeminiTurn } from "@/lib/ai/gemini";
 import { buildCreationContext, buildManualContext } from "@/lib/solando/knowledge";
+import { clientKey, rateLimit } from "@/lib/ai/rateLimit";
 
 /**
  * /api/ia — rota unificada das ferramentas de IA do Solando (Google Gemini).
@@ -149,6 +150,14 @@ ${buildManualContext()}
 }
 
 export async function POST(request: Request) {
+  const rl = rateLimit(clientKey(request, "ia"));
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "Muitas requisições. Aguarde um instante." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } },
+    );
+  }
+
   let tool: Tool | "" = "";
   let payload: Record<string, unknown> = {};
   try {

@@ -7,17 +7,22 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:install": "playwright install --with-deps"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.1",
     "framer-motion": "^11.11.9",
+    "html-to-image": "^1.11.13",
     "next": "^14.2.33",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/node": "^20.16.11",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",

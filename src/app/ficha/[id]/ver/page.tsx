@@ -13,6 +13,7 @@ import {
 import { ATTRIBUTES } from "@/lib/solando/rules";
 import { resolveRace, resolveClass } from "@/lib/solando/customContent";
 import { ExplainSheet } from "@/components/ExplainSheet";
+import { AnimeCardExport } from "@/components/AnimeCardExport";
 
 /**
  * Preview consultável de uma ficha (link compartilhável).
@@ -266,6 +267,23 @@ export default function VerFichaPage({ params }: { params: { id: string } }) {
       )}
 
       <ExplainSheet summary={aiSummary} />
+
+      <AnimeCardExport
+        data={{
+          name: character.name,
+          race: race?.name ?? "",
+          charClass: klass?.name ?? "",
+          level: character.level,
+          rank: forceRank(character).rank,
+          avatarUrl: character.avatarUrl,
+          accent: character.accent,
+          vida: derived.vida,
+          sanidade: derived.sanidade,
+          entropia: derived.entropia,
+          attrs: ATTRIBUTES.map((d) => ({ short: d.short, value: attrs[d.key] })),
+          topSkills: character.skills.slice(0, 6).map((s) => s.name),
+        }}
+      />
     </div>
   );
 }

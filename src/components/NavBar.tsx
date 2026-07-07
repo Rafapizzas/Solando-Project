@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { useProfiles } from "@/lib/profiles";
 
 const baseLinks = [
   { href: "/", label: "Início" },
@@ -10,15 +11,20 @@ const baseLinks = [
   { href: "/mesa", label: "Mesas" },
   { href: "/manual", label: "Manual" },
   { href: "/arquimago", label: "Arquimago" },
+  { href: "/comunidade", label: "Comunidade" },
+  { href: "/guia", label: "Guia" },
   { href: "/criar", label: "Forjar" },
 ];
 
 export function NavBar() {
   const pathname = usePathname();
   const { profile, isAuthenticated, ready } = useAuth();
+  const { activeProfile, canMaster } = useProfiles();
 
   const links = [...baseLinks];
-  if (isAuthenticated) links.splice(3, 0, { href: "/mestre", label: "Minhas Mesas" });
+  // "Minhas Mesas" só para perfis com acesso de Mestre.
+  if (isAuthenticated && canMaster)
+    links.splice(3, 0, { href: "/mestre", label: "Minhas Mesas" });
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-void-950/70 backdrop-blur-md">
@@ -56,17 +62,35 @@ export function NavBar() {
 
           {ready && isAuthenticated && profile ? (
             <Link
-              href="/entrar"
+              href="/perfis"
               className="ml-1 flex items-center gap-1.5 rounded-full border border-sol/40 bg-sol/10 px-3 py-1.5 text-xs font-semibold text-sol-soft transition hover:brightness-110"
-              title="Perfil"
+              title="Perfis — trocar / gerenciar"
             >
-              {profile.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={profile.avatarUrl} alt="" className="h-5 w-5 rounded-full" />
+              {activeProfile ? (
+                <>
+                  <span
+                    className="grid h-5 w-5 place-items-center rounded-full text-[11px]"
+                    style={{ background: activeProfile.color }}
+                  >
+                    {activeProfile.emoji}
+                  </span>
+                  <span className="max-w-[110px] truncate">{activeProfile.name}</span>
+                  <span className="text-[9px] text-zinc-400">
+                    {activeProfile.role === "master" ? "👑" : "🎭"}
+                  </span>
+                </>
+              ) : profile.avatarUrl ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={profile.avatarUrl} alt="" className="h-5 w-5 rounded-full" />
+                  <span className="max-w-[110px] truncate">{profile.displayName}</span>
+                </>
               ) : (
-                <span>🧙</span>
+                <>
+                  <span>🧙</span>
+                  <span className="max-w-[110px] truncate">{profile.displayName}</span>
+                </>
               )}
-              <span className="max-w-[110px] truncate">{profile.displayName}</span>
             </Link>
           ) : (
             <Link href="/entrar" className="btn-primary ml-1 !px-3 !py-1.5 text-xs">

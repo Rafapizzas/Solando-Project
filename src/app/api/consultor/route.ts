@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildManualContext } from "@/lib/solando/knowledge";
+import { clientKey, rateLimit } from "@/lib/ai/rateLimit";
 
 /**
  * /api/consultor — Consultor de Regras do Solando com IA (Google Gemini).
@@ -19,6 +20,14 @@ interface ChatMessage {
 }
 
 export async function POST(request: Request) {
+  const rl = rateLimit(clientKey(request, "consultor"));
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "Muitas requisições. Aguarde um instante." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } },
+    );
+  }
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return NextResponse.json({

@@ -1,15 +1,23 @@
 # ✦ Projeto Solando
 
 Plataforma web completa para o RPG do **Sistema Solando 4.0**: criação de fichas com
-balanceamento automático, mesa com rolagem de dados ao vivo e painel do mestre.
+balanceamento automático, mesa com rolagem de dados ao vivo, painel do mestre, suite de
+IA (Arquimago + forðas assistidas), comunidade de criações e visual inspirado em mangá.
+
+> Documentação técnica completa em [`docs/`](./docs): [Arquitetura](./docs/ARCHITECTURE.md) ·
+> [Funcionalidades](./docs/FEATURES.md) · [Roadmap](./docs/ROADMAP.md) · [Deploy](./docs/DEPLOY.md) ·
+> [Como contribuir](./CONTRIBUTING.md)
 
 ## Stack
 
-- **Next.js 14** (App Router) + **TypeScript**
-- **Tailwind CSS** (tema animado do universo Solando)
-- **Framer Motion** (animações)
-- Persistência atual: **localStorage** (abstraída em `src/lib/storage.ts` para trocar por
-  **Supabase** na fase 2 sem alterar as telas)
+- **Next.js 14** (App Router) + **TypeScript** (strict)
+- **Tailwind CSS** (tema animado do universo Solando + utilitários mangá)
+- **Framer Motion** (transições de página, splash e animações)
+- **Supabase** (auth Google/senha, Postgres com RLS, storage de avatares)
+- **Google Gemini** (suite de IA, chave apenas no servidor)
+- **Web Audio API** (efeitos sonoros de crítico/falha, sintetizados sem assets)
+- **html-to-image** (exportação da ficha como card de anime)
+- **Playwright** (testes de fumaça end-to-end)
 
 ## Rodar localmente
 
@@ -21,14 +29,23 @@ npm run dev
 
 Abra http://localhost:3000
 
-## O que já funciona (MVP)
+Variáveis de ambiente (`.env.local`): veja [`docs/DEPLOY.md`](./docs/DEPLOY.md). A IA usa
+`GEMINI_API_KEY` **somente no servidor**; sem ela, as telas caem em modo degradado sem quebrar.
+
+## O que já funciona
 
 | Área | Descrição |
 | --- | --- |
 | **Criador de ficha** (`/ficha/nova`) | 20 pontos, ranks (F→S), Vida/Sanidade/Entropia, inventário por Rank de Força, skills, talentos, condições. |
-| **Oráculo da Entropia** | Assistente de balanceamento **gratuito** (regras determinísticas, sem custo de API) que valida a ficha e dá insights + arquétipos sugeridos. |
-| **Mesa** (`/mesa`) | Salas de campanha, rolagem d100 com vantagem/desvantagem por rank, histórico de rolagens, rolagem rápida por atributo de cada jogador. |
+| **Oráculo da Entropia** | Assistente de balanceamento **gratuito** (regras determinísticas) que valida a ficha e dá insights + arquétipos. |
+| **Mesa** (`/mesa`) | Salas de campanha, rolagem d100 com vantagem/desvantagem, histórico, rolagem rápida por atributo. Críticos com som e animação. |
 | **Painel do Mestre** (`/mestre`) | Visão consolidada das fichas dos jogadores de cada campanha. |
+| **Arquimago** (`/arquimago`) | Chat de IA que responde dúvidas de regras baseado no manual oficial (grounding, anti-injeção). |
+| **Suite de IA** | Criação de personagem, contramestre de cena/NPC, gerador de nomes/lore e “explique minha ficha”. |
+| **Perfis** (`/perfis`) | Sistema estilo Netflix: perfis de Jogador e Mestre na mesma conta, com troca rápida. |
+| **Comunidade** (`/comunidade`) | Vitrine de raças e classes públicas criadas por qualquer pessoa, com botão “Adotar”. |
+| **Guia** (`/guia`) | Passo a passo ilustrado para pessoas leigas. |
+| **Card de anime** | Exportação da ficha como imagem PNG estilizada. |
 
 ## Regras implementadas
 
@@ -45,9 +62,18 @@ Veja o motor em `src/lib/solando/`:
 3. Sair de "morrendo" exige cura que exceda a vida negativa.
 4. Nova tabela de inventário por Rank de Força.
 
-## Próximos passos (fase 2)
+## Testes
 
-- Integração com **Supabase** (login, banco compartilhado, realtime na mesa).
-- Deploy na **Vercel**.
+```powershell
+npm run test:install   # baixa os navegadores (apenas na primeira vez)
+npm run build
+npm run test:e2e       # smoke tests das rotas públicas
+```
 
-Consulte [`SETUP.md`](./SETUP.md) para o passo a passo de contas e deploy.
+## Documentação e próximos passos
+
+- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — estrutura de pastas, camadas e decisões.
+- [`docs/FEATURES.md`](./docs/FEATURES.md) — detalhe de cada funcionalidade.
+- [`docs/ROADMAP.md`](./docs/ROADMAP.md) — histórico de fases e futuro.
+- [`docs/DEPLOY.md`](./docs/DEPLOY.md) — contas, variáveis e deploy na Vercel.
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — fluxo de branches, validação e convenções.

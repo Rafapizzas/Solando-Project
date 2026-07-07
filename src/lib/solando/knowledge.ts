@@ -24,6 +24,9 @@ import {
 import { ATTRIBUTES, ENTROPY_SOURCES } from "./rules";
 import { SKILL_EFFECTS } from "./skillBuilder";
 
+/** Cache do digesto do manual (dados estáticos → calcula uma vez). */
+let manualCache: string | null = null;
+
 function coreRules(): string {
   const attrs = ATTRIBUTES.map((a) => `${a.label} (${a.short}): ${a.description}`).join(
     "\n",
@@ -49,6 +52,7 @@ function coreRules(): string {
 
 /** Monta o texto completo do manual para grounding. */
 export function buildManualContext(): string {
+  if (manualCache !== null) return manualCache;
   const racas = RACES.map(
     (r) => `- ${r.name}: ${r.lore} Habilidades: ${r.abilities} Fraquezas: ${r.weaknesses}`,
   ).join("\n");
@@ -78,7 +82,7 @@ export function buildManualContext(): string {
     (e) => `- ${e.label}: ${e.proportion} (${e.action})`,
   ).join("\n");
 
-  return [
+  manualCache = [
     coreRules(),
     "\n== RAÇAS ==\n" + racas,
     "\n== CLASSES ==\n" + classes,
@@ -88,6 +92,7 @@ export function buildManualContext(): string {
     "\n== FONTES DE ENTROPIA ==\n" + fontes,
     "\n== EFEITOS DE SKILL (Grimório) ==\n" + efeitos,
   ].join("\n");
+  return manualCache;
 }
 
 /**
