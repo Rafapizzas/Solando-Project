@@ -81,33 +81,51 @@ ${buildFocusedContext(question)}
     { role: "user" as const, parts: [{ text: question }] },
   ];
 
+  const payload = JSON.stringify({
+    systemInstruction: { parts: [{ text: system }] },
+    contents,
+    generationConfig: { temperature: 0.3, maxOutputTokens: 600 },
+  });
+
+  // O Gemini (tier grátis) às vezes devolve 503/429/500 por sobrecarga. Tenta
+  // algumas vezes com um pequeno backoff antes de desistir.
+  const RETRYABLE = new Set([429, 500, 503]);
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  let lastStatus = 0;
   try {
-    const res = await fetch(`${ENDPOINT}?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents,
-        generationConfig: { temperature: 0.3, maxOutputTokens: 600 },
-      }),
-    });
-
-    if (!res.ok) {
-      return NextResponse.json({
-        fallback: true,
-        reason: `IA indisponível (HTTP ${res.status}).`,
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await fetch(`${ENDPOINT}?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
       });
+
+      if (res.ok) {
+        const data = (await res.json()) as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        };
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (!text) {
+          return NextResponse.json({ fallback: true, reason: "Sem resposta da IA." });
+        }
+        return NextResponse.json({ text });
+      }
+
+      lastStatus = res.status;
+      if (!RETRYABLE.has(res.status)) break;
+      // backoff: 500ms, 1200ms
+      if (attempt < 2) await wait(500 + attempt * 700);
     }
 
-    const data = (await res.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    if (!text) {
-      return NextResponse.json({ fallback: true, reason: "Sem resposta da IA." });
-    }
-    return NextResponse.json({ text });
+    const overloaded = lastStatus === 503 || lastStatus === 429;
+    return NextResponse.json({
+      fallback: true,
+      reason: overloaded
+        ? `o Arquimago está sobrecarregado agora (HTTP ${lastStatus})`
+        : `IA indisponível (HTTP ${lastStatus})`,
+    });
   } catch {
-    return NextResponse.json({ fallback: true, reason: "Falha ao contatar a IA." });
+    return NextResponse.json({ fallback: true, reason: "falha ao contatar a IA" });
   }
 }

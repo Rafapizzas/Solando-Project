@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import Link from "next/link";
 
 interface ChatMessage {
   role: "user" | "model";
@@ -155,7 +156,7 @@ export function RulesConsultant() {
         setNote(
           `O Arquimago não conseguiu responder agora${
             data.reason ? ` (${data.reason})` : ""
-          }. Use o compêndio abaixo para consultar as regras.`,
+          }. Tente novamente em instantes ou consulte o Manual oficial.`,
         );
       } else {
         setNote(data.error ?? "Não foi possível consultar agora.");
@@ -316,7 +317,17 @@ export function RulesConsultant() {
           </button>
         </form>
 
-        {note && <p className="text-xs text-sol-soft">{note}</p>}
+        {note && (
+          <div className="space-y-2 rounded-lg border border-sol/30 bg-sol/5 p-3 text-xs text-sol-soft">
+            <p>{note}</p>
+            <Link
+              href="/manual"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-void-950/50 px-3 py-1.5 font-medium text-zinc-100 transition hover:bg-white/5"
+            >
+              📖 Abrir o Manual completo
+            </Link>
+          </div>
+        )}
 
         <p className="flex items-center justify-center gap-1.5 text-center text-[11px] text-zinc-500">
           <span aria-hidden>🔮</span>
