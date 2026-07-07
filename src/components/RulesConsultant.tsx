@@ -147,17 +147,27 @@ export function RulesConsultant() {
       const data = (await res.json()) as {
         text?: string;
         fallback?: boolean;
+        resting?: boolean;
+        status?: number;
         reason?: string;
         error?: string;
       };
       if (data.text) {
         speak(data.text);
       } else if (data.fallback) {
-        setNote(
-          `O Arquimago não conseguiu responder agora${
-            data.reason ? ` (${data.reason})` : ""
-          }. Tente novamente em instantes ou consulte o Manual oficial.`,
-        );
+        if (data.resting) {
+          setNote(
+            `😴 O grande Arquimago Solador das Regras está descansando${
+              data.status ? ` (erro ${data.status})` : ""
+            }. Consulte o Manual ou venha visitá-lo mais tarde, quando ele acordar de seu sono de beleza.`,
+          );
+        } else {
+          setNote(
+            `O Arquimago não conseguiu responder agora${
+              data.reason ? ` (${data.reason})` : ""
+            }. Tente novamente em instantes ou consulte o Manual oficial.`,
+          );
+        }
       } else {
         setNote(data.error ?? "Não foi possível consultar agora.");
       }
