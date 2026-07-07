@@ -1,15 +1,41 @@
 /**
- * storage.ts — Repositório local (localStorage) para fichas, campanhas e mesas.
+ * storage.ts — Repositório de fichas, campanhas e mesas.
  *
- * A API é intencionalmente assíncrona (Promises) para que, na fase 2, a
- * implementação possa ser trocada por Supabase sem alterar os componentes.
+ * A API é assíncrona (Promises). Quando o Supabase está configurado E há um
+ * usuário autenticado, as fichas são lidas/gravadas no banco (compartilhadas
+ * entre dispositivos e visíveis conforme as políticas RLS). Caso contrário, o
+ * app cai automaticamente no modo local (localStorage), sem quebrar.
  */
 
 import { Character, normalizeCharacter } from "./solando/character";
+import { supabase, isSupabaseEnabled } from "./supabase/client";
 
 const KEY_CHARACTERS = "solando:characters";
 const KEY_CAMPAIGNS = "solando:campaigns";
 const KEY_PROFILE = "solando:profile";
+
+/** ID do usuário autenticado, ou null (modo local / não logado). */
+async function currentUserId(): Promise<string | null> {
+  if (!isSupabaseEnabled() || !supabase) return null;
+  const { data } = await supabase.auth.getUser();
+  return data.user?.id ?? null;
+}
+
+/** Converte uma linha da tabela `characters` em um Character normalizado. */
+function rowToCharacter(row: {
+  id: string;
+  name: string | null;
+  avatar_url: string | null;
+  data: unknown;
+}): Character {
+  const base = (row.data && typeof row.data === "object" ? row.data : {}) as Partial<Character>;
+  return normalizeCharacter({
+    ...base,
+    id: row.id,
+    name: row.name ?? base.name ?? "",
+    avatarUrl: row.avatar_url ?? base.avatarUrl,
+  });
+}
 
 export interface Campaign {
   id: string;
@@ -69,24 +95,70 @@ export const profileRepo = {
 
 export const characterRepo = {
   async list(): Promise<Character[]> {
+    const uidUser = await currentUserId();
+    if (uidUser && supabase) {
+      const { data, error } = await supabase
+        .from("characters")
+        .select("id, name, avatar_url, data, updated_at")
+        .eq("owner_id", uidUser)
+        .order("updated_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []).map(rowToCharacter);
+    }
     return read<Character[]>(KEY_CHARACTERS, [])
       .map(normalizeCharacter)
       .sort((a, b) => b.updatedAt - a.updatedAt);
   },
   async get(id: string): Promise<Character | undefined> {
+    const uidUser = await currentUserId();
+    if (uidUser && supabase) {
+      const { data, error } = await supabase
+        .from("characters")
+        .select("id, name, avatar_url, data")
+        .eq("id", id)
+        .maybeSingle();
+      if (error) throw error;
+      return data ? rowToCharacter(data) : undefined;
+    }
     const found = read<Character[]>(KEY_CHARACTERS, []).find((c) => c.id === id);
     return found ? normalizeCharacter(found) : undefined;
   },
   async save(character: Character): Promise<Character> {
+    const uidUser = await currentUserId();
+    const updated = { ...character, updatedAt: Date.now() };
+    if (uidUser && supabase) {
+      const { data, error } = await supabase
+        .from("characters")
+        .upsert(
+          {
+            id: updated.id,
+            owner_id: uidUser,
+            name: updated.name,
+            avatar_url: updated.avatarUrl ?? null,
+            data: updated,
+            updated_at: new Date(updated.updatedAt).toISOString(),
+          },
+          { onConflict: "id" },
+        )
+        .select("id, name, avatar_url, data")
+        .single();
+      if (error) throw error;
+      return rowToCharacter(data);
+    }
     const all = read<Character[]>(KEY_CHARACTERS, []);
     const idx = all.findIndex((c) => c.id === character.id);
-    const updated = { ...character, updatedAt: Date.now() };
     if (idx >= 0) all[idx] = updated;
     else all.push(updated);
     write(KEY_CHARACTERS, all);
     return updated;
   },
   async remove(id: string): Promise<void> {
+    const uidUser = await currentUserId();
+    if (uidUser && supabase) {
+      const { error } = await supabase.from("characters").delete().eq("id", id);
+      if (error) throw error;
+      return;
+    }
     write(
       KEY_CHARACTERS,
       read<Character[]>(KEY_CHARACTERS, []).filter((c) => c.id !== id),
