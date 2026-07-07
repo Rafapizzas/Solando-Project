@@ -7,6 +7,7 @@ import { DevSignature } from "@/components/DevSignature";
 import { OpeningSplash } from "@/components/OpeningSplash";
 import { ProfileGate } from "@/components/ProfileGate";
 import { KonamiEasterEgg } from "@/components/KonamiEasterEgg";
+import { FeedbackWidget } from "@/components/FeedbackWidget";
 import { AuthProvider } from "@/lib/auth";
 import { ProfileProvider } from "@/lib/profiles";
 import { RollFxProvider } from "@/lib/rollFx";
@@ -53,6 +54,7 @@ export default function RootLayout({
               <OpeningSplash />
               <ProfileGate />
               <KonamiEasterEgg />
+              <FeedbackWidget />
               <div className="flex min-h-screen flex-col">
                 <NavBar />
                 <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-6 sm:px-6">

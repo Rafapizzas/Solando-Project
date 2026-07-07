@@ -254,6 +254,37 @@ create policy rolls_insert on public.roll_logs
     author_id = auth.uid() and public.is_table_member(table_id)
   );
 
+-- ----------------------------------------------------------------------------
+-- FEEDBACK: relatos de erro, sugestões e opiniões (aberto ao público).
+-- Qualquer visitante (anon ou logado) pode ENVIAR; ninguém LÊ pelo app —
+-- só o dono, pelo painel do Supabase (ou via service_role).
+-- ----------------------------------------------------------------------------
+create table if not exists public.feedback (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  category text not null check (category in ('bug', 'sugestao', 'opiniao', 'outro')),
+  rating int check (rating between 1 and 5),
+  message text not null check (char_length(message) between 1 and 4000),
+  contact_email text,
+  page text,
+  user_agent text,
+  profile_name text,
+  user_id uuid references auth.users (id) on delete set null
+);
+
+alter table public.feedback enable row level security;
+
+-- Enviar: liberado para todos (anon e autenticados). Sem SELECT/UPDATE/DELETE
+-- por política — a leitura é feita só pelo dono no painel do Supabase.
+drop policy if exists feedback_insert on public.feedback;
+create policy feedback_insert on public.feedback
+  for insert to anon, authenticated with check (
+    char_length(message) between 1 and 4000
+    and category in ('bug', 'sugestao', 'opiniao', 'outro')
+  );
+
+create index if not exists feedback_created_idx on public.feedback (created_at desc);
+
 -- Atualizar (reações): membros da mesa podem atualizar o campo de reações.
 drop policy if exists rolls_update on public.roll_logs;
 create policy rolls_update on public.roll_logs
