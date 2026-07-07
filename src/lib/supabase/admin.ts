@@ -19,14 +19,26 @@ export function getAdminClient(): SupabaseClient | null {
   return _admin;
 }
 
-/** E-mail configurado como administrador (dono do site). */
-export function adminEmail(): string | null {
-  return (
+/**
+ * Lista de e-mails com poder de administrador (donos do site). Aceita vários
+ * separados por vírgula em NEXT_PUBLIC_ADMIN_EMAIL (ex.: "a@x.com,b@y.com").
+ */
+export function adminEmails(): string[] {
+  const raw =
     process.env.NEXT_PUBLIC_ADMIN_EMAIL ??
     process.env.ADMIN_EMAIL ??
     process.env.FEEDBACK_EMAIL_TO ??
-    null
-  );
+    "";
+  return raw
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/** Verifica se um e-mail está na lista de administradores. */
+export function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return adminEmails().includes(email.toLowerCase());
 }
 
 /**
@@ -54,8 +66,7 @@ export async function getUserFromRequest(
       (meta.full_name as string) ||
       (meta.name as string) ||
       (email ? email.split("@")[0] : "Aventureiro");
-    const admin = adminEmail();
-    const isAdmin = !!email && !!admin && email.toLowerCase() === admin.toLowerCase();
+    const isAdmin = isAdminEmail(email);
     return { id: data.user.id, email, name, isAdmin };
   } catch {
     return null;

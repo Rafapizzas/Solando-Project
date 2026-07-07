@@ -78,8 +78,11 @@ export default function FeedbackWallPage() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
 
-  const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
-  const isAdmin = !!profile?.email && !!adminEmail && profile.email.toLowerCase() === adminEmail.toLowerCase();
+  const adminList = (process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  const isAdmin = !!profile?.email && adminList.includes(profile.email.toLowerCase());
 
   const load = useCallback(async () => {
     if (!isSupabaseEnabled() || !supabase) {
