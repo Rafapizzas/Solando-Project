@@ -340,10 +340,19 @@ function PlayerRow({
     >
       <div className="mb-2 flex items-center gap-2">
         <div
-          className="grid h-8 w-8 place-items-center rounded-lg text-sm font-black text-void-950"
+          className="grid h-8 w-8 place-items-center overflow-hidden rounded-lg text-sm font-black text-void-950"
           style={{ background: character.accent }}
         >
-          {character.name.charAt(0).toUpperCase() || "?"}
+          {character.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={character.avatarUrl}
+              alt={character.name || "Avatar"}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            character.name.charAt(0).toUpperCase() || "?"
+          )}
         </div>
         <span className="font-semibold text-zinc-100">
           {character.name || "Sem nome"}

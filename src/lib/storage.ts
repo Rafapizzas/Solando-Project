@@ -564,4 +564,37 @@ export const tableRepo = {
   },
 };
 
+// --- Upload de imagem do personagem (bucket "avatars") ----------------------
+
+/**
+ * Envia a foto do personagem para o bucket público `avatars`, na pasta do
+ * usuário (uid/<characterId>.<ext>) — exigido pelas políticas de Storage.
+ * Retorna a URL pública (com cache-busting) para salvar em `avatarUrl`.
+ */
+export async function uploadCharacterAvatar(
+  characterId: string,
+  file: File,
+): Promise<string> {
+  const uidUser = await currentUserId();
+  if (!uidUser || !supabase) {
+    throw new Error("Entre na sua conta para enviar imagens.");
+  }
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Selecione um arquivo de imagem.");
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error("Imagem muito grande (máx. 5 MB).");
+  }
+  const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const path = `${uidUser}/${characterId}.${ext || "png"}`;
+  const { error } = await supabase.storage.from("avatars").upload(path, file, {
+    upsert: true,
+    cacheControl: "3600",
+    contentType: file.type || undefined,
+  });
+  if (error) throw error;
+  const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+  return `${data.publicUrl}?v=${Date.now()}`;
+}
+
 export { uid };

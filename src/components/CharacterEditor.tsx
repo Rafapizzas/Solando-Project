@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Character, newCharacter } from "@/lib/solando/character";
 import { Attributes } from "@/lib/solando/character";
-import { characterRepo } from "@/lib/storage";
+import { characterRepo, uploadCharacterAvatar } from "@/lib/storage";
+import { isSupabaseEnabled } from "@/lib/supabase/client";
 import { AttributeAllocator } from "./AttributeAllocator";
 import { BalanceAdvisor } from "./BalanceAdvisor";
 import { DerivedStatsPanel } from "./DerivedStatsPanel";
@@ -44,6 +45,8 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
   const [character, setCharacter] = useState<Character | null>(null);
   const [tab, setTab] = useState<Tab>("identidade");
   const [saved, setSaved] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -76,6 +79,20 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
     setSaved(false);
   }
 
+  async function onPickAvatar(file: File | undefined) {
+    if (!file || !character) return;
+    setAvatarError(null);
+    setUploadingAvatar(true);
+    try {
+      const url = await uploadCharacterAvatar(character.id, file);
+      patch({ avatarUrl: url });
+    } catch (err) {
+      setAvatarError(err instanceof Error ? err.message : "Falha ao enviar imagem.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
+
   function onAttrs(attrs: Attributes, luckRoll?: number) {
     setCharacter((prev) =>
       prev ? { ...prev, attributes: attrs, luckRoll: luckRoll ?? prev.luckRoll } : prev,
@@ -99,12 +116,32 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
         style={{ borderColor: `${character.accent}44` }}
       >
         <div className="flex items-center gap-4">
-          <div
-            className="grid h-14 w-14 place-items-center rounded-2xl text-2xl font-black text-void-950"
+          <label
+            className="group relative grid h-14 w-14 cursor-pointer place-items-center overflow-hidden rounded-2xl text-2xl font-black text-void-950"
             style={{ background: character.accent }}
+            title={isSupabaseEnabled() ? "Enviar foto do personagem" : "Entre para enviar foto"}
           >
-            {character.name.trim().charAt(0).toUpperCase() || "?"}
-          </div>
+            {character.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={character.avatarUrl}
+                alt={character.name || "Avatar"}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span>{character.name.trim().charAt(0).toUpperCase() || "?"}</span>
+            )}
+            <span className="absolute inset-0 hidden place-items-center bg-black/50 text-[10px] font-semibold text-white group-hover:grid">
+              {uploadingAvatar ? "..." : "📷 Foto"}
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={uploadingAvatar || !isSupabaseEnabled()}
+              onChange={(e) => onPickAvatar(e.target.files?.[0])}
+            />
+          </label>
           <div>
             <input
               className="w-full bg-transparent font-display text-2xl font-bold text-zinc-100 outline-none placeholder:text-zinc-600"
@@ -120,6 +157,9 @@ export function CharacterEditor({ characterId }: { characterId?: string }) {
                 </span>
               )}
             </div>
+            {avatarError && (
+              <p className="mt-1 text-xs text-red-400">{avatarError}</p>
+            )}
           </div>
         </div>
 
