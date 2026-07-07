@@ -6,7 +6,7 @@ import { useProfiles } from "@/lib/profiles";
 import { ProfilePicker } from "@/components/ProfilePicker";
 
 export default function PerfisPage() {
-  const { isAuthenticated, ready } = useAuth();
+  const { isAuthenticated, ready, profile, signOut } = useAuth();
   const { activeProfile, clearActive } = useProfiles();
 
   if (ready && !isAuthenticated) {
@@ -41,6 +41,49 @@ export default function PerfisPage() {
             </button>
           </p>
         )}
+      </div>
+
+      {/* Conta ≠ Perfil — explicação + ações de conta */}
+      <div className="card space-y-4 p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-mente-soft">
+              Sua conta
+            </p>
+            <p className="mt-1 font-semibold text-zinc-100">
+              {profile?.displayName ?? "Aventureiro"}
+            </p>
+            {profile?.email && (
+              <p className="text-sm text-zinc-500">{profile.email}</p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => {
+                clearActive();
+                void signOut();
+              }}
+              className="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-zinc-300 transition hover:bg-white/5"
+            >
+              🔁 Entrar em outra conta
+            </button>
+            <button
+              onClick={() => {
+                clearActive();
+                void signOut();
+              }}
+              className="rounded-lg border border-fail/40 bg-fail/10 px-3 py-1.5 text-sm text-fail transition hover:brightness-110"
+            >
+              🚪 Sair da conta
+            </button>
+          </div>
+        </div>
+        <div className="rounded-lg border border-white/10 bg-void-950/40 p-3 text-sm text-zinc-400">
+          <b className="text-zinc-200">Conta</b> é o seu login (e-mail/Google) — onde ficam
+          seus dados e assinatura. <b className="text-zinc-200">Perfis</b> são personas
+          dentro da mesma conta (Jogador ou Mestre), como os perfis da Netflix. Você troca
+          de perfil sem sair da conta.
+        </div>
       </div>
 
       <div className="card p-8">

@@ -116,3 +116,120 @@ export function buildCreationContext(): string {
     "\n== FONTES DE ENTROPIA ==\n" + fontes,
   ].join("\n");
 }
+
+/* ------------------------------------------------------------------ *
+ * Manual por TÓPICOS — para responder rápido: em vez de mandar o manual
+ * inteiro a cada pergunta, selecionamos só as seções relevantes (menos
+ * tokens = resposta mais ágil e barata). As regras nucleares (fórmulas)
+ * vão sempre junto, pois são curtas e pedidas com frequência.
+ * ------------------------------------------------------------------ */
+
+interface ManualSection {
+  id: string;
+  title: string;
+  /** Palavras-chave (sem acento, minúsculas) que ativam esta seção. */
+  keywords: string[];
+  build: () => string;
+}
+
+let sectionsCache: ManualSection[] | null = null;
+
+function getSections(): ManualSection[] {
+  if (sectionsCache) return sectionsCache;
+  sectionsCache = [
+    {
+      id: "racas",
+      title: "RAÇAS",
+      keywords: ["raca", "racas", "raça", "especie", "linhagem", "fraqueza", "habilidade racial"],
+      build: () =>
+        RACES.map(
+          (r) =>
+            `- ${r.name}: ${r.lore} Habilidades: ${r.abilities} Fraquezas: ${r.weaknesses}`,
+        ).join("\n"),
+    },
+    {
+      id: "classes",
+      title: "CLASSES",
+      keywords: ["classe", "classes", "progressao", "progressão", "role", "papel", "nivel 0", "arquetipo"],
+      build: () =>
+        CLASSES.filter((c) => !c.secret)
+          .map(
+            (c) =>
+              `- ${c.name} (${c.role}): Nível 0 — ${c.level0} Progressão: ${c.progression}`,
+          )
+          .join("\n"),
+    },
+    {
+      id: "talentos",
+      title: "TALENTOS",
+      keywords: ["talento", "talentos", "pericia", "perícia", "tier", "pontos de talento"],
+      build: () =>
+        TALENTS.map((t) => {
+          const tiers = t.tiers.map((tier) => `${tier.points}pt: ${tier.effect}`).join(" | ");
+          return `- ${t.name} [${t.category}]: ${t.summary} Tiers: ${tiers}`;
+        }).join("\n"),
+    },
+    {
+      id: "condicoes",
+      title: "CONDIÇÕES",
+      keywords: ["condicao", "condição", "condicoes", "condições", "desvantagem", "ki", "entropia-ki"],
+      build: () =>
+        CONDITIONS_CATALOG.map(
+          (c) => `- ${c.name} (${c.min}–${c.max} pts): ${c.description}`,
+        ).join("\n"),
+    },
+    {
+      id: "competencias",
+      title: "COMPETÊNCIAS",
+      keywords: ["competencia", "competência", "competencias", "proficiencia", "proficiência", "area", "área"],
+      build: () =>
+        COMPETENCES.map(
+          (c) => `- ${c.name} [${c.group}]: ${c.description}`,
+        ).join("\n"),
+    },
+    {
+      id: "entropia",
+      title: "FONTES DE ENTROPIA",
+      keywords: ["entropia", "fonte", "fontes", "mana", "espectro", "mente", "corpo", "alma", "magia"],
+      build: () =>
+        ENTROPY_SOURCES.map(
+          (f) => `- ${f.label} (${f.spectrumLabel}): ${f.passive} ${f.description}`,
+        ).join("\n"),
+    },
+    {
+      id: "skills",
+      title: "EFEITOS DE SKILL (Grimório)",
+      keywords: ["skill", "skills", "grimorio", "grimório", "efeito", "dano", "cura", "custo", "potencia", "potência"],
+      build: () =>
+        SKILL_EFFECTS.map(
+          (e) => `- ${e.label}: ${e.proportion} (${e.action})`,
+        ).join("\n"),
+    },
+  ];
+  return sectionsCache;
+}
+
+/** Remove acentos e baixa a caixa para casar palavras-chave. */
+function normalize(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+/**
+ * Monta um contexto FOCADO na pergunta: regras nucleares (sempre) + apenas as
+ * seções do manual cujas palavras-chave aparecem na pergunta. Se nada casar
+ * (pergunta genérica), devolve o manual completo como rede de segurança.
+ */
+export function buildFocusedContext(question: string): string {
+  const q = normalize(question);
+  const matched = getSections().filter((s) =>
+    s.keywords.some((k) => q.includes(normalize(k))),
+  );
+
+  if (matched.length === 0) return buildManualContext();
+
+  const blocks = matched.map((s) => `\n== ${s.title} ==\n${s.build()}`);
+  return [coreRules(), ...blocks].join("\n");
+}

@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { motion } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { useProfiles } from "@/lib/profiles";
+import { AccountMenu } from "@/components/AccountMenu";
 
 const baseLinks = [
   { href: "/", label: "Início" },
@@ -18,8 +20,8 @@ const baseLinks = [
 
 export function NavBar() {
   const pathname = usePathname();
-  const { profile, isAuthenticated, ready } = useAuth();
-  const { activeProfile, canMaster } = useProfiles();
+  const { isAuthenticated, ready } = useAuth();
+  const { canMaster } = useProfiles();
 
   const links = [...baseLinks];
   // "Minhas Mesas" só para perfis com acesso de Mestre.
@@ -47,51 +49,26 @@ export function NavBar() {
                 <li key={link.href}>
                   <Link
                     href={link.href}
-                    className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
-                      active
-                        ? "bg-white/10 text-white"
-                        : "text-zinc-400 hover:bg-white/5 hover:text-zinc-100"
+                    className={`relative block rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      active ? "text-white" : "text-zinc-400 hover:text-zinc-100"
                     }`}
                   >
-                    {link.label}
+                    {active && (
+                      <motion.span
+                        layoutId="navActive"
+                        className="absolute inset-0 rounded-lg bg-white/10 shadow-[0_0_18px_-4px_rgba(168,85,247,0.7)] ring-1 ring-mente/40"
+                        transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                      />
+                    )}
+                    <span className="relative z-10">{link.label}</span>
                   </Link>
                 </li>
               );
             })}
           </ul>
 
-          {ready && isAuthenticated && profile ? (
-            <Link
-              href="/perfis"
-              className="ml-1 flex items-center gap-1.5 rounded-full border border-sol/40 bg-sol/10 px-3 py-1.5 text-xs font-semibold text-sol-soft transition hover:brightness-110"
-              title="Perfis — trocar / gerenciar"
-            >
-              {activeProfile ? (
-                <>
-                  <span
-                    className="grid h-5 w-5 place-items-center rounded-full text-[11px]"
-                    style={{ background: activeProfile.color }}
-                  >
-                    {activeProfile.emoji}
-                  </span>
-                  <span className="max-w-[110px] truncate">{activeProfile.name}</span>
-                  <span className="text-[9px] text-zinc-400">
-                    {activeProfile.role === "master" ? "👑" : "🎭"}
-                  </span>
-                </>
-              ) : profile.avatarUrl ? (
-                <>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={profile.avatarUrl} alt="" className="h-5 w-5 rounded-full" />
-                  <span className="max-w-[110px] truncate">{profile.displayName}</span>
-                </>
-              ) : (
-                <>
-                  <span>🧙</span>
-                  <span className="max-w-[110px] truncate">{profile.displayName}</span>
-                </>
-              )}
-            </Link>
+          {ready && isAuthenticated ? (
+            <AccountMenu />
           ) : (
             <Link href="/entrar" className="btn-primary ml-1 !px-3 !py-1.5 text-xs">
               Entrar
@@ -109,11 +86,18 @@ export function NavBar() {
             <li key={link.href}>
               <Link
                 href={link.href}
-                className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-                  active ? "bg-white/10 text-white" : "text-zinc-400"
+                className={`relative block whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                  active ? "text-white" : "text-zinc-400"
                 }`}
               >
-                {link.label}
+                {active && (
+                  <motion.span
+                    layoutId="navActiveMobile"
+                    className="absolute inset-0 rounded-lg bg-white/10 ring-1 ring-mente/40"
+                    transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                  />
+                )}
+                <span className="relative z-10">{link.label}</span>
               </Link>
             </li>
           );

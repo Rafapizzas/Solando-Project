@@ -158,3 +158,53 @@
   background: linear-gradient(90deg, #a855f7, #22d3ee 40%, transparent);
   border-radius: 999px;
 }
+
+/* Brilho que varre a assinatura (barrinha do rodapé na home). */
+@keyframes sigShine {
+  0% {
+    transform: translateX(-130%);
+  }
+  55%,
+  100% {
+    transform: translateX(240%);
+  }
+}
+.sig-shine {
+  position: relative;
+  overflow: hidden;
+}
+.sig-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.14) 50%,
+    transparent 60%
+  );
+  transform: translateX(-130%);
+  animation: sigShine 6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Caixa de diálogo estilo light novel / visual novel para o Arquimago. */
+.vn-box {
+  position: relative;
+  background: linear-gradient(
+    160deg,
+    rgba(24, 18, 46, 0.92),
+    rgba(10, 9, 20, 0.96)
+  );
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 20px 60px -20px rgba(168, 85, 247, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sig-shine::after {
+    animation: none;
+  }
+}

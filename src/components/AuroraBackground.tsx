@@ -9,6 +9,9 @@ import { useMemo } from "react";
  */
 
 const RUNES = ["✦", "✧", "⟡", "◈", "✵", "❖", "⬡", "✶", "☄", "✷", "✸", "⚝"];
+// Kanjis temáticos (genéricos, sem marcas registradas): força, alma, ki, ilusão,
+// trevas, luz, dragão, estrela, espada, magia, entropia/caos, espírito.
+const KANJI = ["力", "魂", "気", "幻", "闇", "光", "龍", "星", "剣", "魔", "混沌", "精"];
 
 export function AuroraBackground() {
   const stars = useMemo(
@@ -35,6 +38,21 @@ export function AuroraBackground() {
         delay: Math.random() * 6,
         dur: 8 + Math.random() * 10,
         drift: (Math.random() - 0.5) * 40,
+      })),
+    [],
+  );
+
+  const kanji = useMemo(
+    () =>
+      Array.from({ length: 9 }, (_, i) => ({
+        id: i,
+        glyph: KANJI[i % KANJI.length],
+        top: Math.random() * 100,
+        left: Math.random() * 100,
+        size: 40 + Math.random() * 70,
+        delay: Math.random() * 8,
+        dur: 16 + Math.random() * 14,
+        drift: (Math.random() - 0.5) * 24,
       })),
     [],
   );
@@ -79,6 +97,19 @@ export function AuroraBackground() {
           transition={{ duration: r.dur, delay: r.delay, repeat: Infinity, ease: "easeInOut" }}
         >
           {r.glyph}
+        </motion.span>
+      ))}
+
+      {/* Kanjis temáticos (easter egg de ambientação) */}
+      {kanji.map((k) => (
+        <motion.span
+          key={`k-${k.id}`}
+          className="font-ink absolute select-none text-white/[0.04]"
+          style={{ top: `${k.top}%`, left: `${k.left}%`, fontSize: k.size }}
+          animate={{ y: [0, -18, 0], x: [0, k.drift, 0], opacity: [0.02, 0.06, 0.02] }}
+          transition={{ duration: k.dur, delay: k.delay, repeat: Infinity, ease: "easeInOut" }}
+        >
+          {k.glyph}
         </motion.span>
       ))}
     </div>

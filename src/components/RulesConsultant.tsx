@@ -168,110 +168,156 @@ export function RulesConsultant() {
     }
   }
 
+  const lastModel = [...messages].reverse().find((m) => m.role === "model");
+  const speech = lastModel?.text ?? "";
+  const hasHistory = messages.length > 0;
+
   return (
-    <div className="card p-5">
-      <div className="mb-3 flex items-center gap-2">
-        <motion.span
-          className="text-xl"
-          aria-hidden
-          animate={
-            speaking
-              ? { scaleY: [1, 0.8, 1.08, 1], y: [0, 0.5, -0.5, 0] }
-              : { scaleY: 1, y: 0 }
-          }
-          transition={
-            speaking
-              ? { duration: 0.18, repeat: Infinity, ease: "easeInOut" }
-              : { duration: 0.2 }
-          }
-        >
-          🧙‍♂️
-        </motion.span>
-        <div>
-          <h2 className="font-display text-lg font-bold text-zinc-100">
-            Arquimago Solador das Regras
-          </h2>
-          <p className="text-xs text-zinc-500">
-            {speaking
-              ? "conjurando a resposta…"
-              : "Tire dúvidas do manual — respostas baseadas nas regras oficiais."}
+    <div className="card overflow-hidden p-0">
+      {/* Palco do Arquimago — estilo light novel */}
+      <div className="relative grid gap-5 bg-gradient-to-b from-void-900/60 to-void-950/80 p-5 sm:grid-cols-[auto,1fr] sm:items-end">
+        <div className="pointer-events-none absolute -left-12 top-0 h-44 w-44 rounded-full bg-mente/25 blur-3xl" />
+
+        {/* Retrato grande do arquimago */}
+        <div className="relative mx-auto sm:mx-0">
+          <motion.div
+            className="grid h-28 w-28 place-items-center overflow-hidden rounded-2xl border border-mente/40 bg-void-950/70 text-6xl shadow-glow sm:h-32 sm:w-32"
+            animate={{ y: [0, -3, 0] }}
+            transition={{
+              duration: speaking ? 0.6 : 3.6,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
+          >
+            <div className="halftone pointer-events-none absolute inset-0 opacity-[0.05]" />
+            <motion.span
+              aria-hidden
+              animate={
+                speaking
+                  ? { scaleY: [1, 0.78, 1.08, 1] }
+                  : { scaleY: 1 }
+              }
+              transition={
+                speaking
+                  ? { duration: 0.18, repeat: Infinity, ease: "easeInOut" }
+                  : { duration: 0.2 }
+              }
+            >
+              🧙‍♂️
+            </motion.span>
+          </motion.div>
+          <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 rounded-full border border-mente/40 bg-void-950 px-3 py-0.5 font-ink text-xs text-mente-soft">
+            賢者
+          </span>
+        </div>
+
+        {/* Caixa de diálogo estilo visual novel */}
+        <div className="vn-box relative min-h-[128px] rounded-2xl p-4">
+          <div className="mb-1.5 flex items-center gap-2">
+            <span className="font-display text-sm font-bold tracking-wide text-sol-soft">
+              Arquimago Solador das Regras
+            </span>
+            {speaking && (
+              <span className="text-[10px] text-zinc-500">✦ conjurando…</span>
+            )}
+          </div>
+          <p className="whitespace-pre-wrap font-ink text-lg leading-relaxed text-zinc-100">
+            {speech ? (
+              <>
+                {speech}
+                {speaking && (
+                  <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-sol-soft/80 align-middle" />
+                )}
+              </>
+            ) : loading ? (
+              <span className="text-zinc-500">Os pergaminhos sussurram…</span>
+            ) : (
+              <span className="text-zinc-400">
+                Aproxime-se, jovem aprendiz. Que dúvida das regras de Solando trago à
+                luz hoje?
+              </span>
+            )}
           </p>
+          <motion.span
+            aria-hidden
+            className="pointer-events-none absolute bottom-2 right-3 text-mente-soft/60"
+            animate={{ y: [0, 3, 0], opacity: [0.4, 1, 0.4] }}
+            transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+          >
+            ▼
+          </motion.span>
         </div>
       </div>
 
-      {messages.length > 0 && (
-        <div
-          ref={listRef}
-          className="mb-3 max-h-[360px] space-y-2 overflow-y-auto pr-1"
-        >
-          {messages.map((m, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={`rounded-xl border p-3 text-sm ${
-                m.role === "user"
-                  ? "border-mente/30 bg-mente/5 text-zinc-100"
-                  : "border-alma/30 bg-alma/5 text-alma-soft"
-              }`}
+      {/* Sugestões / histórico / entrada */}
+      <div className="space-y-3 p-5 pt-4">
+        {messages.length === 0 && (
+          <div className="flex flex-wrap gap-2">
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                onClick={() => ask(s)}
+                className="rounded-lg border border-white/10 bg-void-950/40 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-white/5"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {hasHistory && (
+          <details className="group rounded-lg border border-white/10 bg-void-950/40">
+            <summary className="cursor-pointer list-none px-3 py-2 text-xs text-zinc-400 transition hover:text-zinc-200">
+              📜 Pergaminho da conversa ({messages.length})
+            </summary>
+            <div
+              ref={listRef}
+              className="max-h-64 space-y-2 overflow-y-auto p-3 pt-0"
             >
-              <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-500">
-                {m.role === "user" ? "Você" : "Arquimago"}
-              </div>
-              <p className="whitespace-pre-wrap">
-                {m.text}
-                {speaking && i === messages.length - 1 && m.role === "model" && (
-                  <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse bg-alma-soft/70 align-middle" />
-                )}
-              </p>
-            </motion.div>
-          ))}
-          {loading && (
-            <div className="rounded-xl border border-white/10 bg-void-950/40 p-3 text-sm text-zinc-500">
-              Consultando o manual…
+              {messages.map((m, i) => (
+                <div
+                  key={i}
+                  className={`rounded-xl border p-3 text-sm ${
+                    m.role === "user"
+                      ? "border-mente/30 bg-mente/5 text-zinc-100"
+                      : "border-alma/30 bg-alma/5 text-alma-soft"
+                  }`}
+                >
+                  <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-500">
+                    {m.role === "user" ? "Você" : "Arquimago"}
+                  </div>
+                  <p className="whitespace-pre-wrap">{m.text}</p>
+                </div>
+              ))}
             </div>
-          )}
-        </div>
-      )}
+          </details>
+        )}
 
-      {messages.length === 0 && (
-        <div className="mb-3 flex flex-wrap gap-2">
-          {SUGGESTIONS.map((s) => (
-            <button
-              key={s}
-              onClick={() => ask(s)}
-              className="rounded-lg border border-white/10 bg-void-950/40 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-white/5"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void ask(input);
-        }}
-        className="flex gap-2"
-      >
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Pergunte sobre as regras…"
-          className="flex-1 rounded-lg border border-white/10 bg-void-950/60 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-mente/50"
-          disabled={loading || speaking}
-        />
-        <button
-          type="submit"
-          disabled={loading || speaking || !input.trim()}
-          className="btn-primary !px-4 text-sm disabled:opacity-50"
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void ask(input);
+          }}
+          className="flex gap-2"
         >
-          Perguntar
-        </button>
-      </form>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Pergunte sobre as regras…"
+            className="flex-1 rounded-lg border border-white/10 bg-void-950/60 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-mente/50"
+            disabled={loading || speaking}
+          />
+          <button
+            type="submit"
+            disabled={loading || speaking || !input.trim()}
+            className="btn-primary !px-4 text-sm disabled:opacity-50"
+          >
+            Perguntar
+          </button>
+        </form>
 
-      {note && <p className="mt-2 text-xs text-sol-soft">{note}</p>}
+        {note && <p className="text-xs text-sol-soft">{note}</p>}
+      </div>
     </div>
   );
 }
