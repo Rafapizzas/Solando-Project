@@ -406,6 +406,11 @@ export function SkillsTab({ character, patch }: TabProps) {
           onCreate={(skill) => {
             patch({ skills: [...character.skills, skill] });
             setBuilding(false);
+            // Publica automaticamente no grimório (igual raças/classes).
+            void publishSkill(skill, profile?.displayName).then(() => {
+              setShared(getSharedSkills());
+              setFlash(`"${skill.name}" criada e publicada no grimório.`);
+            });
           }}
         />
       )}

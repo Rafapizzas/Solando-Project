@@ -27,7 +27,8 @@ export function CompetencesTab({ character, patch }: TabProps) {
   const [query, setQuery] = useState("");
 
   function setLevel(id: string, level: number) {
-    const clamped = Math.max(0, Math.min(capLevel, level));
+    // Sem trava: o jogador pode passar do teto sugerido (só recebe aviso).
+    const clamped = Math.max(0, level);
     const existing = character.competences.find((c) => c.id === id);
     let next: CompetenceEntry[];
     if (existing) {
@@ -64,10 +65,13 @@ export function CompetencesTab({ character, patch }: TabProps) {
         <div className="space-y-2">
           {character.competences.map((c) => {
             const def = findCompetence(c.id);
+            const overCap = c.level > capLevel;
             return (
               <div
                 key={c.id}
-                className="flex items-center gap-2 rounded-xl border border-white/10 bg-void-950/40 p-3"
+                className={`flex items-center gap-2 rounded-xl border bg-void-950/40 p-3 ${
+                  overCap ? "border-amber-400/40" : "border-white/10"
+                }`}
               >
                 <div className="flex-1">
                   <div className="text-sm font-semibold text-zinc-100">
@@ -75,6 +79,11 @@ export function CompetencesTab({ character, patch }: TabProps) {
                   </div>
                   <div className="text-[10px] text-alma-soft">
                     NVL {c.level} · +{c.level * 10} no dado
+                    {overCap && (
+                      <span className="ml-1 text-amber-300">
+                        · acima do teto NVL {capLevel} (aviso, sem trava)
+                      </span>
+                    )}
                   </div>
                 </div>
                 <button className="btn-ghost !px-3 !py-1.5" onClick={() => setLevel(c.id, c.level - 1)}>
@@ -84,7 +93,6 @@ export function CompetencesTab({ character, patch }: TabProps) {
                 <button
                   className="btn-ghost !px-3 !py-1.5"
                   onClick={() => setLevel(c.id, c.level + 1)}
-                  disabled={c.level >= capLevel}
                 >
                   +
                 </button>
