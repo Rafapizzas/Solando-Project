@@ -110,11 +110,11 @@ alter table public.custom_classes enable row level security;
 do $$ begin
   alter table public.custom_races
     add constraint custom_races_owner_slug_key unique (owner_id, slug);
-exception when duplicate_object then null; end $$;
+exception when duplicate_object or duplicate_table then null; end $$;
 do $$ begin
   alter table public.custom_classes
     add constraint custom_classes_owner_slug_key unique (owner_id, slug);
-exception when duplicate_object then null; end $$;
+exception when duplicate_object or duplicate_table then null; end $$;
 
 drop policy if exists races_owner_all on public.custom_races;
 create policy races_owner_all on public.custom_races
@@ -148,7 +148,7 @@ alter table public.shared_skills enable row level security;
 do $$ begin
   alter table public.shared_skills
     add constraint shared_skills_owner_slug_key unique (owner_id, slug);
-exception when duplicate_object then null; end $$;
+exception when duplicate_object or duplicate_table then null; end $$;
 
 drop policy if exists shared_skills_owner_all on public.shared_skills;
 create policy shared_skills_owner_all on public.shared_skills
@@ -382,9 +382,14 @@ create policy avatars_delete on storage.objects
   for delete to authenticated
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 
--- Realtime (para a mesa atualizar rolagens ao vivo)
-alter publication supabase_realtime add table public.roll_logs;
-alter publication supabase_realtime add table public.table_members;
+-- Realtime (para a mesa atualizar rolagens ao vivo). Idempotente: ignora se a
+-- tabela já estiver na publicação.
+do $$ begin
+  alter publication supabase_realtime add table public.roll_logs;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter publication supabase_realtime add table public.table_members;
+exception when duplicate_object then null; end $$;
 
 -- ============================================================================
 -- BIG UPDATE 2026-07 — Mesa no centro, amigos+presença, convites, cópias de
@@ -400,7 +405,7 @@ update public.profiles
   where friend_code is null;
 do $$ begin
   alter table public.profiles add constraint profiles_friend_code_key unique (friend_code);
-exception when duplicate_object then null; end $$;
+exception when duplicate_object or duplicate_table then null; end $$;
 
 -- 2) AMIZADES (pedido/aceito/bloqueado) --------------------------------------
 create table if not exists public.friendships (
@@ -457,7 +462,9 @@ create policy presence_friends_read on public.user_presence
   for select to authenticated
   using (user_id = auth.uid() or public.are_friends(user_id, auth.uid()));
 
-alter publication supabase_realtime add table public.user_presence;
+do $$ begin
+  alter publication supabase_realtime add table public.user_presence;
+exception when duplicate_object then null; end $$;
 
 -- 4) TABLE_MEMBERS: status do convite (pendente/aceito) ----------------------
 alter table public.table_members
@@ -690,7 +697,13 @@ create policy tracks_manage on public.music_tracks
 
 create index if not exists tracks_table_idx on public.music_tracks (table_id, position);
 
--- Realtime: cards de NPC e player de música ao vivo.
-alter publication supabase_realtime add table public.table_npcs;
-alter publication supabase_realtime add table public.table_music;
-alter publication supabase_realtime add table public.music_tracks;
+-- Realtime: cards de NPC e player de música ao vivo. Idempotente.
+do $$ begin
+  alter publication supabase_realtime add table public.table_npcs;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter publication supabase_realtime add table public.table_music;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter publication supabase_realtime add table public.music_tracks;
+exception when duplicate_object then null; end $$;
