@@ -707,3 +707,27 @@ exception when duplicate_object then null; end $$;
 do $$ begin
   alter publication supabase_realtime add table public.music_tracks;
 exception when duplicate_object then null; end $$;
+
+-- ----------------------------------------------------------------------------
+-- 14) MUSIC_LIBRARY: biblioteca pessoal de trilhas/links do mestre ------------
+-- Trilhas reutilizáveis entre TODAS as mesas do dono (bosses, exploração…).
+-- Diferente de music_tracks (fila de UMA mesa), aqui é o acervo persistente.
+-- ----------------------------------------------------------------------------
+create table if not exists public.music_library (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users (id) on delete cascade,
+  provider text not null default 'youtube' check (provider in ('youtube', 'spotify')),
+  url text not null,
+  video_id text,
+  title text not null default '',
+  tag text not null default '',   -- ex.: "batalha", "exploração", "boss", "tensão"
+  created_at timestamptz not null default now()
+);
+alter table public.music_library enable row level security;
+
+-- Cada mestre só vê/gerencia a própria biblioteca.
+drop policy if exists music_library_owner on public.music_library;
+create policy music_library_owner on public.music_library
+  for all to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+create index if not exists music_library_owner_idx on public.music_library (owner_id, created_at desc);

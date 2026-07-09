@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  LibraryTrack,
   MusicProvider,
   MusicState,
   MusicTrack,
+  musicLibraryRepo,
   musicRepo,
   spotifyEmbed,
   youtubeVideoId,
@@ -22,6 +24,23 @@ interface YTPlayer {
   getCurrentTime(): number;
   setVolume(volume: number): void;
   destroy(): void;
+}
+
+/** Mensagens amigáveis para os códigos de erro do player do YouTube. */
+function ytErrorMessage(code: number): string {
+  switch (code) {
+    case 2:
+      return "Link inválido. Confira a URL do YouTube.";
+    case 5:
+      return "O player não conseguiu tocar este vídeo neste navegador.";
+    case 100:
+      return "Vídeo removido ou privado.";
+    case 101:
+    case 150:
+      return "O dono do vídeo bloqueou a reprodução fora do YouTube. Tente outro link.";
+    default:
+      return "Não consegui tocar este vídeo. Tente outro link.";
+  }
 }
 
 declare global {
@@ -67,11 +86,14 @@ function detectProvider(url: string): { provider: MusicProvider; videoId: string
 export function MusicPlayer({ tableId, isMaster }: { tableId: string; isMaster: boolean }) {
   const [state, setState] = useState<MusicState | null>(null);
   const [tracks, setTracks] = useState<MusicTrack[]>([]);
+  const [library, setLibrary] = useState<LibraryTrack[]>([]);
   const [synced, setSynced] = useState(false);
   const [volume, setVolume] = useState(70);
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
+  const [tag, setTag] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [showLibrary, setShowLibrary] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
@@ -89,6 +111,20 @@ export function MusicPlayer({ tableId, isMaster }: { tableId: string; isMaster: 
     return unsub;
   }, [tableId, load]);
 
+  /* Carrega o acervo pessoal do mestre (reutilizável entre mesas). */
+  const loadLibrary = useCallback(async () => {
+    if (!isMaster) return;
+    try {
+      setLibrary(await musicLibraryRepo.list());
+    } catch {
+      /* offline / sem conta */
+    }
+  }, [isMaster]);
+
+  useEffect(() => {
+    loadLibrary();
+  }, [loadLibrary]);
+
   /* Cria o player do YouTube quando o usuário habilita o áudio. */
   const enableAudio = useCallback(async () => {
     setError(null);
@@ -100,7 +136,18 @@ export function MusicPlayer({ tableId, isMaster }: { tableId: string; isMaster: 
     playerRef.current = new window.YT.Player(containerRef.current, {
       height: "180",
       width: "320",
-      playerVars: { playsinline: 1, modestbranding: 1, rel: 0 },
+      playerVars: {
+        playsinline: 1,
+        modestbranding: 1,
+        rel: 0,
+        enablejsapi: 1,
+        origin: typeof window !== "undefined" ? window.location.origin : undefined,
+      },
+      events: {
+        onError: (e: { data: number }) => {
+          setError(ytErrorMessage(e?.data ?? 0));
+        },
+      },
     });
     setSynced(true);
   }, []);
@@ -196,6 +243,38 @@ export function MusicPlayer({ tableId, isMaster }: { tableId: string; isMaster: 
     }
     setUrl("");
     setTitle("");
+  }
+
+  /* Salva o link atual (campo URL) no acervo pessoal reutilizável. */
+  async function saveToLibrary() {
+    const parsed = detectProvider(url);
+    if (!parsed) {
+      setError("Cole um link válido do YouTube ou Spotify para salvar.");
+      return;
+    }
+    try {
+      await musicLibraryRepo.add({
+        provider: parsed.provider,
+        url: url.trim(),
+        videoId: parsed.videoId,
+        title:
+          title.trim() ||
+          (parsed.provider === "youtube" ? "Faixa do YouTube" : "Faixa do Spotify"),
+        tag: tag.trim(),
+      });
+      setUrl("");
+      setTitle("");
+      setTag("");
+      await loadLibrary();
+      setShowLibrary(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Não consegui salvar na biblioteca.");
+    }
+  }
+
+  async function removeFromLibrary(id: string) {
+    await musicLibraryRepo.remove(id);
+    await loadLibrary();
   }
 
   const spotify = state?.provider === "spotify" ? spotifyEmbed(state.url ?? "") : null;
@@ -299,8 +378,88 @@ export function MusicPlayer({ tableId, isMaster }: { tableId: string; isMaster: 
             <button onClick={() => submitUrl("queue")} className="btn-ghost text-sm">
               ➕ Adicionar à fila
             </button>
+            <input
+              className="input w-full sm:w-36 text-sm"
+              placeholder="Marca (ex.: boss)"
+              value={tag}
+              onChange={(e) => setTag(e.target.value)}
+            />
+            <button onClick={saveToLibrary} className="btn-ghost text-sm">
+              💾 Salvar na biblioteca
+            </button>
           </div>
           {error && <p className="text-sm text-red-400">{error}</p>}
+
+          {/* Biblioteca pessoal (acervo reutilizável entre mesas) */}
+          <div className="rounded-xl border border-white/10 bg-void-950/30 p-3">
+            <button
+              onClick={() => setShowLibrary((v) => !v)}
+              className="flex w-full items-center justify-between text-sm font-semibold text-zinc-300"
+            >
+              <span>📚 Minha biblioteca de trilhas ({library.length})</span>
+              <span className="text-zinc-500">{showLibrary ? "▲" : "▼"}</span>
+            </button>
+            {showLibrary && (
+              <div className="mt-3 space-y-1">
+                {library.length === 0 && (
+                  <p className="text-xs text-zinc-500">
+                    Salve links aqui para reutilizar em qualquer mesa (trilhas de boss,
+                    exploração, tensão…).
+                  </p>
+                )}
+                {library.map((lt) => (
+                  <div
+                    key={lt.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-white/5 bg-void-950/40 px-3 py-2"
+                  >
+                    <span className="min-w-0 truncate text-sm text-zinc-300">
+                      {lt.provider === "spotify" ? "🟢" : "▶️"} {lt.title}
+                      {lt.tag && (
+                        <span className="ml-1 rounded bg-white/5 px-1 text-[10px] text-zinc-400">
+                          {lt.tag}
+                        </span>
+                      )}
+                    </span>
+                    <div className="flex shrink-0 gap-1">
+                      <button
+                        onClick={() =>
+                          playNow({
+                            provider: lt.provider,
+                            url: lt.url,
+                            videoId: lt.videoId,
+                            title: lt.title,
+                          })
+                        }
+                        className="btn-ghost text-xs"
+                      >
+                        Tocar
+                      </button>
+                      <button
+                        onClick={async () => {
+                          await musicRepo.addTrack(tableId, {
+                            provider: lt.provider,
+                            url: lt.url,
+                            videoId: lt.videoId,
+                            title: lt.title,
+                          });
+                          await load();
+                        }}
+                        className="btn-ghost text-xs"
+                      >
+                        + Fila
+                      </button>
+                      <button
+                        onClick={() => removeFromLibrary(lt.id)}
+                        className="btn-ghost text-xs text-red-400"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {tracks.length > 0 && (
             <div className="space-y-1">

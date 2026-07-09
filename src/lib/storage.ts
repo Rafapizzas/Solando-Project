@@ -1771,4 +1771,81 @@ export const musicRepo = {
   },
 };
 
+// --- Biblioteca de trilhas do mestre (acervo reutilizável entre mesas) -------
+
+export interface LibraryTrack {
+  id: string;
+  provider: MusicProvider;
+  url: string;
+  videoId: string | null;
+  title: string;
+  tag: string;
+}
+
+interface LibraryTrackRow {
+  id: string;
+  provider: MusicProvider;
+  url: string;
+  video_id: string | null;
+  title: string | null;
+  tag: string | null;
+}
+
+function rowToLibraryTrack(row: LibraryTrackRow): LibraryTrack {
+  return {
+    id: row.id,
+    provider: row.provider,
+    url: row.url,
+    videoId: row.video_id,
+    title: row.title ?? "",
+    tag: row.tag ?? "",
+  };
+}
+
+export const musicLibraryRepo = {
+  /** Acervo de trilhas do mestre autenticado (todas as mesas). */
+  async list(): Promise<LibraryTrack[]> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) return [];
+    const { data, error } = await supabase
+      .from("music_library")
+      .select("id, provider, url, video_id, title, tag")
+      .eq("owner_id", uidUser)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return ((data ?? []) as LibraryTrackRow[]).map(rowToLibraryTrack);
+  },
+
+  async add(track: {
+    provider: MusicProvider;
+    url: string;
+    videoId: string | null;
+    title: string;
+    tag?: string;
+  }): Promise<LibraryTrack> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) throw new Error("Entre na sua conta para salvar trilhas.");
+    const { data, error } = await supabase
+      .from("music_library")
+      .insert({
+        owner_id: uidUser,
+        provider: track.provider,
+        url: track.url,
+        video_id: track.videoId,
+        title: track.title,
+        tag: track.tag ?? "",
+      })
+      .select("id, provider, url, video_id, title, tag")
+      .single();
+    if (error) throw error;
+    return rowToLibraryTrack(data as LibraryTrackRow);
+  },
+
+  async remove(id: string): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase.from("music_library").delete().eq("id", id);
+    if (error) throw error;
+  },
+};
+
 export { uid };
