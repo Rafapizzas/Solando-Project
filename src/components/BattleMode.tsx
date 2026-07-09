@@ -33,6 +33,8 @@ export function BattleMode({
   const [combatants, setCombatants] = useState<Combatant[]>([]);
   const [npcs, setNpcs] = useState<Npc[]>([]);
   const [open, setOpen] = useState(false);
+  const [enemyName, setEnemyName] = useState("");
+  const [enemyHp, setEnemyHp] = useState("20");
 
   const load = useCallback(async () => {
     const [s, c] = await Promise.all([
@@ -150,9 +152,9 @@ export function BattleMode({
   }
 
   async function addEnemy() {
-    const name = prompt("Nome do inimigo:");
+    const name = enemyName.trim();
     if (!name) return;
-    const hp = Number(prompt("Vida (máx.):", "20")) || 20;
+    const hp = Number(enemyHp) || 20;
     await combatRepo.addCombatant(tableId, {
       name,
       side: "inimigo",
@@ -161,6 +163,8 @@ export function BattleMode({
       hpMax: hp,
       refKind: "manual",
     });
+    setEnemyName("");
+    setEnemyHp("20");
     await load();
   }
 
@@ -227,8 +231,23 @@ export function BattleMode({
           {isMaster && active && (
             <div className="flex flex-wrap items-center gap-2 border-y border-white/10 py-2">
               <span className="text-xs text-zinc-500">Adicionar:</span>
+              <input
+                value={enemyName}
+                onChange={(e) => setEnemyName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addEnemy()}
+                placeholder="Nome do inimigo"
+                className="h-8 w-36 rounded bg-void-950/60 px-2 text-xs text-zinc-100"
+              />
+              <input
+                value={enemyHp}
+                onChange={(e) => setEnemyHp(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addEnemy()}
+                type="number"
+                title="Vida (máx.)"
+                className="h-8 w-16 rounded bg-void-950/60 px-2 text-xs text-zinc-100"
+              />
               <button onClick={addEnemy} className="btn-ghost text-xs">
-                + Inimigo avulso
+                + Inimigo
               </button>
               {npcs.length > 0 && (
                 <select
