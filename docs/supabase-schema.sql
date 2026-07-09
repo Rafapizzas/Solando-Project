@@ -731,3 +731,59 @@ create policy music_library_owner on public.music_library
   for all to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 
 create index if not exists music_library_owner_idx on public.music_library (owner_id, created_at desc);
+
+-- ----------------------------------------------------------------------------
+-- 15) MODO BATALHA: estado de combate + combatentes (iniciativa/turnos/HP) ----
+-- O mestre controla; os jogadores acompanham ao vivo via realtime.
+-- ----------------------------------------------------------------------------
+create table if not exists public.table_combat (
+  table_id uuid primary key references public.campaigns (id) on delete cascade,
+  active boolean not null default false,
+  mode text not null default 'battle' check (mode in ('battle', 'boss')),
+  round int not null default 1,
+  turn_index int not null default 0,
+  updated_by uuid references auth.users (id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+alter table public.table_combat enable row level security;
+
+drop policy if exists combat_read on public.table_combat;
+create policy combat_read on public.table_combat
+  for select to authenticated using (public.is_table_member(table_id));
+drop policy if exists combat_manage on public.table_combat;
+create policy combat_manage on public.table_combat
+  for all to authenticated
+  using (public.can_manage_table(table_id)) with check (public.can_manage_table(table_id));
+
+create table if not exists public.combat_combatants (
+  id uuid primary key default gen_random_uuid(),
+  table_id uuid not null references public.campaigns (id) on delete cascade,
+  name text not null default '',
+  image_url text,
+  side text not null default 'aliado' check (side in ('aliado', 'inimigo')),
+  initiative int not null default 0,
+  hp_current int not null default 0,
+  hp_max int not null default 0,
+  conditions text not null default '',
+  ref_kind text not null default 'manual',  -- 'player' | 'npc' | 'manual'
+  ref_id text,
+  created_at timestamptz not null default now()
+);
+alter table public.combat_combatants enable row level security;
+
+drop policy if exists combatants_read on public.combat_combatants;
+create policy combatants_read on public.combat_combatants
+  for select to authenticated using (public.is_table_member(table_id));
+drop policy if exists combatants_manage on public.combat_combatants;
+create policy combatants_manage on public.combat_combatants
+  for all to authenticated
+  using (public.can_manage_table(table_id)) with check (public.can_manage_table(table_id));
+
+create index if not exists combatants_table_idx on public.combat_combatants (table_id, initiative desc);
+
+do $$ begin
+  alter publication supabase_realtime add table public.table_combat;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter publication supabase_realtime add table public.combat_combatants;
+exception when duplicate_object then null; end $$;

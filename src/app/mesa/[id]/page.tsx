@@ -24,6 +24,7 @@ import { MesaAssistant } from "@/components/MesaAssistant";
 import { MesaInvite } from "@/components/MesaInvite";
 import { TableNpcs } from "@/components/TableNpcs";
 import { MusicPlayer } from "@/components/MusicPlayer";
+import { BattleMode } from "@/components/BattleMode";
 import { useAuth } from "@/lib/auth";
 import { usePresence } from "@/lib/presence";
 import { useRollFx } from "@/lib/rollFx";
@@ -270,6 +271,8 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-4">
+          <BattleMode tableId={params.id} isMaster={iAmMaster} tableChars={tableChars} />
+
           <div className="card p-5">
             <h3 className="mb-3 font-display text-lg font-bold text-zinc-100">
               Personagens na mesa

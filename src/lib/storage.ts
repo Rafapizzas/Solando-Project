@@ -1885,4 +1885,228 @@ export const musicLibraryRepo = {
   },
 };
 
+// --- Modo Batalha: estado de combate + combatentes (D13) --------------------
+
+export type CombatMode = "battle" | "boss";
+export type CombatSide = "aliado" | "inimigo";
+
+export interface CombatState {
+  tableId: string;
+  active: boolean;
+  mode: CombatMode;
+  round: number;
+  turnIndex: number;
+  updatedAt: number;
+}
+
+export interface Combatant {
+  id: string;
+  tableId: string;
+  name: string;
+  imageUrl?: string;
+  side: CombatSide;
+  initiative: number;
+  hpCurrent: number;
+  hpMax: number;
+  conditions: string;
+  refKind: "player" | "npc" | "manual";
+  refId: string | null;
+  createdAt: number;
+}
+
+interface CombatStateRow {
+  table_id: string;
+  active: boolean;
+  mode: CombatMode;
+  round: number;
+  turn_index: number;
+  updated_at: string;
+}
+
+interface CombatantRow {
+  id: string;
+  table_id: string;
+  name: string | null;
+  image_url: string | null;
+  side: CombatSide;
+  initiative: number;
+  hp_current: number;
+  hp_max: number;
+  conditions: string | null;
+  ref_kind: "player" | "npc" | "manual";
+  ref_id: string | null;
+  created_at: string;
+}
+
+function rowToCombatState(row: CombatStateRow): CombatState {
+  return {
+    tableId: row.table_id,
+    active: !!row.active,
+    mode: row.mode,
+    round: row.round,
+    turnIndex: row.turn_index,
+    updatedAt: new Date(row.updated_at).getTime(),
+  };
+}
+
+function rowToCombatant(row: CombatantRow): Combatant {
+  return {
+    id: row.id,
+    tableId: row.table_id,
+    name: row.name ?? "",
+    imageUrl: row.image_url ?? undefined,
+    side: row.side,
+    initiative: row.initiative,
+    hpCurrent: row.hp_current,
+    hpMax: row.hp_max,
+    conditions: row.conditions ?? "",
+    refKind: row.ref_kind,
+    refId: row.ref_id,
+    createdAt: new Date(row.created_at).getTime(),
+  };
+}
+
+const COMBATANT_COLS =
+  "id, table_id, name, image_url, side, initiative, hp_current, hp_max, conditions, ref_kind, ref_id, created_at";
+
+export const combatRepo = {
+  async getState(tableId: string): Promise<CombatState | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from("table_combat")
+      .select("table_id, active, mode, round, turn_index, updated_at")
+      .eq("table_id", tableId)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? rowToCombatState(data as CombatStateRow) : null;
+  },
+
+  async setState(
+    tableId: string,
+    patch: { active?: boolean; mode?: CombatMode; round?: number; turnIndex?: number },
+  ): Promise<void> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) return;
+    const row: Record<string, unknown> = {
+      table_id: tableId,
+      updated_by: uidUser,
+      updated_at: new Date().toISOString(),
+    };
+    if (patch.active !== undefined) row.active = patch.active;
+    if (patch.mode !== undefined) row.mode = patch.mode;
+    if (patch.round !== undefined) row.round = patch.round;
+    if (patch.turnIndex !== undefined) row.turn_index = patch.turnIndex;
+    const { error } = await supabase.from("table_combat").upsert(row, { onConflict: "table_id" });
+    if (error) throw error;
+  },
+
+  async combatants(tableId: string): Promise<Combatant[]> {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from("combat_combatants")
+      .select(COMBATANT_COLS)
+      .eq("table_id", tableId)
+      .order("initiative", { ascending: false })
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return ((data ?? []) as CombatantRow[]).map(rowToCombatant);
+  },
+
+  async addCombatant(
+    tableId: string,
+    c: {
+      name: string;
+      imageUrl?: string | null;
+      side: CombatSide;
+      initiative?: number;
+      hpCurrent?: number;
+      hpMax?: number;
+      conditions?: string;
+      refKind?: "player" | "npc" | "manual";
+      refId?: string | null;
+    },
+  ): Promise<Combatant> {
+    if (!supabase) throw new Error("Indisponível offline.");
+    const { data, error } = await supabase
+      .from("combat_combatants")
+      .insert({
+        table_id: tableId,
+        name: c.name,
+        image_url: c.imageUrl ?? null,
+        side: c.side,
+        initiative: c.initiative ?? 0,
+        hp_current: c.hpCurrent ?? c.hpMax ?? 0,
+        hp_max: c.hpMax ?? 0,
+        conditions: c.conditions ?? "",
+        ref_kind: c.refKind ?? "manual",
+        ref_id: c.refId ?? null,
+      })
+      .select(COMBATANT_COLS)
+      .single();
+    if (error) throw error;
+    return rowToCombatant(data as CombatantRow);
+  },
+
+  async updateCombatant(
+    id: string,
+    patch: {
+      name?: string;
+      side?: CombatSide;
+      initiative?: number;
+      hpCurrent?: number;
+      hpMax?: number;
+      conditions?: string;
+    },
+  ): Promise<void> {
+    if (!supabase) return;
+    const row: Record<string, unknown> = {};
+    if (patch.name !== undefined) row.name = patch.name;
+    if (patch.side !== undefined) row.side = patch.side;
+    if (patch.initiative !== undefined) row.initiative = patch.initiative;
+    if (patch.hpCurrent !== undefined) row.hp_current = patch.hpCurrent;
+    if (patch.hpMax !== undefined) row.hp_max = patch.hpMax;
+    if (patch.conditions !== undefined) row.conditions = patch.conditions;
+    const { error } = await supabase.from("combat_combatants").update(row).eq("id", id);
+    if (error) throw error;
+  },
+
+  async removeCombatant(id: string): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase.from("combat_combatants").delete().eq("id", id);
+    if (error) throw error;
+  },
+
+  async clear(tableId: string): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase.from("combat_combatants").delete().eq("table_id", tableId);
+    if (error) throw error;
+  },
+
+  subscribe(tableId: string, onChange: () => void): () => void {
+    const client = supabase;
+    if (!client) return () => {};
+    const channel = client
+      .channel(`combate:${tableId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "table_combat", filter: `table_id=eq.${tableId}` },
+        onChange,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "combat_combatants",
+          filter: `table_id=eq.${tableId}`,
+        },
+        onChange,
+      )
+      .subscribe();
+    return () => {
+      client.removeChannel(channel);
+    };
+  },
+};
+
 export { uid };
