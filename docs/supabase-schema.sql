@@ -787,3 +787,56 @@ exception when duplicate_object then null; end $$;
 do $$ begin
   alter publication supabase_realtime add table public.combat_combatants;
 exception when duplicate_object then null; end $$;
+
+-- ----------------------------------------------------------------------------
+-- 16) PALCO / CENA: cenário atual + quem está em cena (D11) -------------------
+-- O mestre define o cenário/mapa e coloca/remove personagens e NPCs em cena.
+-- `on_stage=false` = já apareceu na sessão (fica no "backlog"), mas fora de cena.
+-- ----------------------------------------------------------------------------
+create table if not exists public.table_scene (
+  table_id uuid primary key references public.campaigns (id) on delete cascade,
+  title text not null default '',
+  background_url text,
+  updated_by uuid references auth.users (id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+alter table public.table_scene enable row level security;
+
+drop policy if exists scene_read on public.table_scene;
+create policy scene_read on public.table_scene
+  for select to authenticated using (public.is_table_member(table_id));
+drop policy if exists scene_manage on public.table_scene;
+create policy scene_manage on public.table_scene
+  for all to authenticated
+  using (public.can_manage_table(table_id)) with check (public.can_manage_table(table_id));
+
+create table if not exists public.scene_entities (
+  id uuid primary key default gen_random_uuid(),
+  table_id uuid not null references public.campaigns (id) on delete cascade,
+  kind text not null default 'npc' check (kind in ('personagem', 'npc', 'objeto')),
+  name text not null default '',
+  image_url text,
+  on_stage boolean not null default true,
+  position int not null default 0,
+  ref_id text,
+  first_seen_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+alter table public.scene_entities enable row level security;
+
+drop policy if exists scene_ent_read on public.scene_entities;
+create policy scene_ent_read on public.scene_entities
+  for select to authenticated using (public.is_table_member(table_id));
+drop policy if exists scene_ent_manage on public.scene_entities;
+create policy scene_ent_manage on public.scene_entities
+  for all to authenticated
+  using (public.can_manage_table(table_id)) with check (public.can_manage_table(table_id));
+
+create index if not exists scene_ent_table_idx on public.scene_entities (table_id, position);
+
+do $$ begin
+  alter publication supabase_realtime add table public.table_scene;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter publication supabase_realtime add table public.scene_entities;
+exception when duplicate_object then null; end $$;

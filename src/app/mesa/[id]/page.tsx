@@ -25,6 +25,7 @@ import { MesaInvite } from "@/components/MesaInvite";
 import { TableNpcs } from "@/components/TableNpcs";
 import { MusicPlayer } from "@/components/MusicPlayer";
 import { BattleMode } from "@/components/BattleMode";
+import { SceneStage } from "@/components/SceneStage";
 import { useAuth } from "@/lib/auth";
 import { usePresence } from "@/lib/presence";
 import { useRollFx } from "@/lib/rollFx";
@@ -45,6 +46,9 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
   const [rolls, setRolls] = useState<RollLog[]>([]);
   const [secretMode, setSecretMode] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [panel, setPanel] = useState<"personagens" | "npcs" | "musica" | "rolagens">(
+    "personagens",
+  );
 
   const iAmMaster = !!myId && campaign?.ownerId === myId;
   const myMembership = members.find((m) => m.userId === myId) ?? null;
@@ -271,40 +275,71 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-4">
+          <SceneStage tableId={params.id} isMaster={iAmMaster} tableChars={tableChars} />
+
           <BattleMode tableId={params.id} isMaster={iAmMaster} tableChars={tableChars} />
 
-          <div className="card p-5">
-            <h3 className="mb-3 font-display text-lg font-bold text-zinc-100">
-              Personagens na mesa
-            </h3>
-            {tableChars.length === 0 && (
-              <p className="text-sm text-zinc-500">
-                {iAmMaster
-                  ? "Nenhum jogador trouxe ficha ainda."
-                  : "Nenhuma ficha sua na mesa. Traga a sua acima."}
-              </p>
-            )}
-            <div className="space-y-3">
-              {tableChars.map((tc) => (
-                <PlayerRow
-                  key={tc.id}
-                  character={tc.character}
-                  onRoll={(text, result) => pushRoll(tc.character, text, result)}
-                />
-              ))}
-            </div>
+          {/* D8 — Abas para reduzir o scroll da sala */}
+          <div className="flex flex-wrap gap-1 rounded-xl border border-white/10 bg-void-950/40 p-1">
+            {(
+              [
+                ["personagens", `🎭 Personagens${tableChars.length ? ` (${tableChars.length})` : ""}`],
+                ["npcs", `🗿 NPCs${tableNpcs.length ? ` (${tableNpcs.length})` : ""}`],
+                ["musica", "🎵 Música"],
+                ["rolagens", `📜 Rolagens${rolls.length ? ` (${rolls.length})` : ""}`],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setPanel(key)}
+                className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  panel === key
+                    ? "bg-mente/20 text-mente-soft"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
-          <TableNpcs
-            tableId={params.id}
-            isMaster={iAmMaster}
-            npcs={tableNpcs}
-            onChange={loadTable}
-          />
+          {panel === "personagens" && (
+            <div className="card p-5">
+              <h3 className="mb-3 font-display text-lg font-bold text-zinc-100">
+                Personagens na mesa
+              </h3>
+              {tableChars.length === 0 && (
+                <p className="text-sm text-zinc-500">
+                  {iAmMaster
+                    ? "Nenhum jogador trouxe ficha ainda."
+                    : "Nenhuma ficha sua na mesa. Traga a sua acima."}
+                </p>
+              )}
+              <div className="space-y-3">
+                {tableChars.map((tc) => (
+                  <PlayerRow
+                    key={tc.id}
+                    character={tc.character}
+                    onRoll={(text, result) => pushRoll(tc.character, text, result)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
-          <MusicPlayer tableId={params.id} isMaster={iAmMaster} />
+          {panel === "npcs" && (
+            <TableNpcs
+              tableId={params.id}
+              isMaster={iAmMaster}
+              npcs={tableNpcs}
+              onChange={loadTable}
+            />
+          )}
+
+          {panel === "musica" && <MusicPlayer tableId={params.id} isMaster={iAmMaster} />}
 
           {/* Log de rolagens */}
+          {panel === "rolagens" && (
           <div className="card p-5">
             <h3 className="mb-3 font-display text-lg font-bold text-zinc-100">
               📜 Histórico de rolagens
@@ -386,6 +421,7 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
               )}
             </div>
           </div>
+          )}
         </div>
 
         {/* Rolador livre */}

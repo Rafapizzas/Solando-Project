@@ -2109,4 +2109,177 @@ export const combatRepo = {
   },
 };
 
+// --- Palco / Cena: cenário atual + quem está em cena (D11) ------------------
+
+export type SceneEntityKind = "personagem" | "npc" | "objeto";
+
+export interface SceneState {
+  tableId: string;
+  title: string;
+  backgroundUrl: string | null;
+  updatedAt: number;
+}
+
+export interface SceneEntity {
+  id: string;
+  tableId: string;
+  kind: SceneEntityKind;
+  name: string;
+  imageUrl?: string;
+  onStage: boolean;
+  position: number;
+  refId: string | null;
+  firstSeenAt: number;
+}
+
+interface SceneStateRow {
+  table_id: string;
+  title: string | null;
+  background_url: string | null;
+  updated_at: string;
+}
+
+interface SceneEntityRow {
+  id: string;
+  table_id: string;
+  kind: SceneEntityKind;
+  name: string | null;
+  image_url: string | null;
+  on_stage: boolean;
+  position: number;
+  ref_id: string | null;
+  first_seen_at: string;
+}
+
+function rowToSceneState(row: SceneStateRow): SceneState {
+  return {
+    tableId: row.table_id,
+    title: row.title ?? "",
+    backgroundUrl: row.background_url,
+    updatedAt: new Date(row.updated_at).getTime(),
+  };
+}
+
+function rowToSceneEntity(row: SceneEntityRow): SceneEntity {
+  return {
+    id: row.id,
+    tableId: row.table_id,
+    kind: row.kind,
+    name: row.name ?? "",
+    imageUrl: row.image_url ?? undefined,
+    onStage: !!row.on_stage,
+    position: row.position,
+    refId: row.ref_id,
+    firstSeenAt: new Date(row.first_seen_at).getTime(),
+  };
+}
+
+const SCENE_ENTITY_COLS =
+  "id, table_id, kind, name, image_url, on_stage, position, ref_id, first_seen_at";
+
+export const sceneRepo = {
+  async getState(tableId: string): Promise<SceneState | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from("table_scene")
+      .select("table_id, title, background_url, updated_at")
+      .eq("table_id", tableId)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? rowToSceneState(data as SceneStateRow) : null;
+  },
+
+  async setState(
+    tableId: string,
+    patch: { title?: string; backgroundUrl?: string | null },
+  ): Promise<void> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) return;
+    const row: Record<string, unknown> = {
+      table_id: tableId,
+      updated_by: uidUser,
+      updated_at: new Date().toISOString(),
+    };
+    if (patch.title !== undefined) row.title = patch.title;
+    if (patch.backgroundUrl !== undefined) row.background_url = patch.backgroundUrl;
+    const { error } = await supabase.from("table_scene").upsert(row, { onConflict: "table_id" });
+    if (error) throw error;
+  },
+
+  async entities(tableId: string): Promise<SceneEntity[]> {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from("scene_entities")
+      .select(SCENE_ENTITY_COLS)
+      .eq("table_id", tableId)
+      .order("position", { ascending: true })
+      .order("first_seen_at", { ascending: true });
+    if (error) throw error;
+    return ((data ?? []) as SceneEntityRow[]).map(rowToSceneEntity);
+  },
+
+  async addEntity(
+    tableId: string,
+    e: {
+      kind: SceneEntityKind;
+      name: string;
+      imageUrl?: string | null;
+      refId?: string | null;
+      onStage?: boolean;
+    },
+  ): Promise<SceneEntity> {
+    if (!supabase) throw new Error("Indisponível offline.");
+    const { data, error } = await supabase
+      .from("scene_entities")
+      .insert({
+        table_id: tableId,
+        kind: e.kind,
+        name: e.name,
+        image_url: e.imageUrl ?? null,
+        ref_id: e.refId ?? null,
+        on_stage: e.onStage ?? true,
+      })
+      .select(SCENE_ENTITY_COLS)
+      .single();
+    if (error) throw error;
+    return rowToSceneEntity(data as SceneEntityRow);
+  },
+
+  async setOnStage(id: string, onStage: boolean): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("scene_entities")
+      .update({ on_stage: onStage })
+      .eq("id", id);
+    if (error) throw error;
+  },
+
+  async removeEntity(id: string): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase.from("scene_entities").delete().eq("id", id);
+    if (error) throw error;
+  },
+
+  subscribe(tableId: string, onChange: () => void): () => void {
+    const client = supabase;
+    if (!client) return () => {};
+    const channel = client
+      .channel(`cena:${tableId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "table_scene", filter: `table_id=eq.${tableId}` },
+        onChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "scene_entities", filter: `table_id=eq.${tableId}` },
+        onChange,
+      )
+      .subscribe();
+    return () => {
+      client.removeChannel(channel);
+    };
+  },
+};
+
 export { uid };
