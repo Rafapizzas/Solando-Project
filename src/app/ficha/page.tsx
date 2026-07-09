@@ -39,9 +39,14 @@ export default function FichasPage() {
           <h1 className="text-3xl font-black title-gradient">Minhas Fichas</h1>
           <p className="mt-1 text-zinc-400">Seus personagens do universo Solando.</p>
         </div>
-        <Link href="/ficha/nova" className="btn-primary">
-          + Nova ficha
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/ficha/importar" className="btn-ghost">
+            📥 Importar ficha
+          </Link>
+          <Link href="/ficha/nova" className="btn-primary">
+            + Nova ficha
+          </Link>
+        </div>
       </div>
 
       <AICharacterForge />
