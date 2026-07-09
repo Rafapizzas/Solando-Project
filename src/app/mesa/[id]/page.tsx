@@ -204,27 +204,47 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
             altera sua ficha original nem outras mesas.
           </p>
         ) : (
-          <div className="flex flex-wrap items-center gap-3">
-            <select
-              className="input max-w-xs"
-              defaultValue=""
-              onChange={(e) => chooseCharacter(e.target.value)}
-            >
-              <option value="">
-                {iAmMaster
-                  ? "— Trazer uma ficha para a mesa —"
-                  : "— Escolha a ficha que vai trazer —"}
-              </option>
-              {myChars.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name || "Sem nome"}
-                </option>
-              ))}
-            </select>
-            {myChars.length === 0 && (
+          <div className="space-y-3">
+            <p className="text-sm text-zinc-400">
+              {iAmMaster
+                ? "Escolha uma ficha para trazer à mesa:"
+                : "Escolha o personagem que você vai jogar nesta mesa:"}
+            </p>
+            {myChars.length === 0 ? (
               <Link href="/ficha" className="text-sm text-mente-soft underline">
                 Você ainda não tem fichas — criar uma
               </Link>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {myChars.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => chooseCharacter(c.id)}
+                    className="group relative overflow-hidden rounded-xl border border-white/10 bg-void-950/60 text-left transition hover:border-mente/60 hover:ring-2 hover:ring-mente/40"
+                  >
+                    <div className="aspect-[3/4] w-full bg-void-950">
+                      {c.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={c.avatarUrl}
+                          alt={c.name || "Personagem"}
+                          className="h-full w-full object-cover transition group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="grid h-full w-full place-items-center text-4xl">🎭</div>
+                      )}
+                    </div>
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-2">
+                      <p className="truncate text-sm font-bold text-zinc-100">
+                        {c.name || "Sem nome"}
+                      </p>
+                      <p className="truncate text-[11px] text-zinc-400">
+                        {c.race || "—"} · Nv {c.level}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         )}

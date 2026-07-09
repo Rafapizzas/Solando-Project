@@ -1312,6 +1312,43 @@ export interface Npc {
   updatedAt: number;
 }
 
+/** Ficha opcional de um NPC (atributos como os personagens). Guardada em `npc.data.sheet`. */
+export interface NpcSheet {
+  level: number;
+  hpMax: number;
+  attributes: {
+    forca: number;
+    destreza: number;
+    constituicao: number;
+    aspecto: number;
+    mente: number;
+    poder: number;
+    sorte: number;
+  };
+}
+
+export function emptyNpcSheet(): NpcSheet {
+  return {
+    level: 1,
+    hpMax: 20,
+    attributes: {
+      forca: 0,
+      destreza: 0,
+      constituicao: 0,
+      aspecto: 0,
+      mente: 0,
+      poder: 0,
+      sorte: 0,
+    },
+  };
+}
+
+/** Lê a ficha embutida de um NPC (ou null se for NPC só de texto). */
+export function npcSheet(npc: Npc): NpcSheet | null {
+  const s = (npc.data as { sheet?: unknown })?.sheet;
+  return s && typeof s === "object" ? (s as NpcSheet) : null;
+}
+
 interface NpcRow {
   id: string;
   owner_id: string;

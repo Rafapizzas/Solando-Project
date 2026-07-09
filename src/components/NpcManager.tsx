@@ -1,7 +1,25 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Npc, NpcInput, npcRepo, uploadNpcImage } from "@/lib/storage";
+import {
+  Npc,
+  NpcInput,
+  NpcSheet,
+  emptyNpcSheet,
+  npcRepo,
+  npcSheet,
+  uploadNpcImage,
+} from "@/lib/storage";
+
+const SHEET_ATTRS: Array<{ key: keyof NpcSheet["attributes"]; label: string }> = [
+  { key: "forca", label: "Força" },
+  { key: "destreza", label: "Destreza" },
+  { key: "constituicao", label: "Constituição" },
+  { key: "aspecto", label: "Aspecto" },
+  { key: "mente", label: "Mente" },
+  { key: "poder", label: "Poder" },
+  { key: "sorte", label: "Sorte" },
+];
 
 const EMPTY: NpcInput = {
   name: "",
@@ -167,6 +185,7 @@ function NpcLibraryCard({
             {npc.hostile ? "⚔️ Hostil" : "🕊️ Aliado"}
           </span>
           {npc.isGeneric && <span className="chip text-[10px]">Genérico</span>}
+          {npcSheet(npc) && <span className="chip text-[10px] text-amber-300">🎲 Ficha</span>}
         </div>
       </div>
       <div className="flex flex-1 flex-col gap-2 p-4">
@@ -213,6 +232,8 @@ function NpcForm({
       : { ...EMPTY },
   );
   const [imageUrl, setImageUrl] = useState<string | undefined>(npc?.imageUrl);
+  const [hasSheet, setHasSheet] = useState<boolean>(!!(npc && npcSheet(npc)));
+  const [sheet, setSheet] = useState<NpcSheet>((npc && npcSheet(npc)) ?? emptyNpcSheet());
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -241,7 +262,11 @@ function NpcForm({
     setSaving(true);
     setError(null);
     try {
-      const patch: NpcInput = { ...form, imageUrl };
+      // Preserva outras chaves de data; adiciona/remove a ficha conforme o toggle.
+      const baseData = { ...(npc?.data ?? {}) } as Record<string, unknown>;
+      if (hasSheet) baseData.sheet = sheet;
+      else delete baseData.sheet;
+      const patch: NpcInput = { ...form, imageUrl, data: baseData };
       if (npc) await npcRepo.update(npc.id, patch);
       else await npcRepo.create(patch);
       await onSaved();
@@ -349,6 +374,71 @@ function NpcForm({
           placeholder="A história do NPC — só você (mestre) vê isto."
         />
       </label>
+
+      {/* D12 — Ficha opcional: NPC com atributos (como um personagem) ou só texto */}
+      <div className="rounded-xl border border-white/10 bg-void-950/30 p-4">
+        <label className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
+          <input
+            type="checkbox"
+            checked={hasSheet}
+            onChange={(e) => setHasSheet(e.target.checked)}
+          />
+          🎲 Este NPC tem ficha (atributos)
+        </label>
+        <p className="mt-1 text-xs text-zinc-500">
+          Ligado: o NPC vira uma ficha com atributos e vida (útil em combate). Desligado: é
+          apenas texto (história/objetivo).
+        </p>
+        {hasSheet && (
+          <div className="mt-3 space-y-3">
+            <div className="flex flex-wrap gap-3">
+              <label className="text-xs text-zinc-400">
+                Nível
+                <input
+                  type="number"
+                  className="input mt-1 w-20"
+                  value={sheet.level}
+                  onChange={(e) =>
+                    setSheet((s) => ({ ...s, level: Math.max(0, Number(e.target.value) || 0) }))
+                  }
+                />
+              </label>
+              <label className="text-xs text-zinc-400">
+                Vida (máx.)
+                <input
+                  type="number"
+                  className="input mt-1 w-24"
+                  value={sheet.hpMax}
+                  onChange={(e) =>
+                    setSheet((s) => ({ ...s, hpMax: Math.max(0, Number(e.target.value) || 0) }))
+                  }
+                />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {SHEET_ATTRS.map((a) => (
+                <label key={a.key} className="text-xs text-zinc-400">
+                  {a.label}
+                  <input
+                    type="number"
+                    className="input mt-1 w-full"
+                    value={sheet.attributes[a.key]}
+                    onChange={(e) =>
+                      setSheet((s) => ({
+                        ...s,
+                        attributes: {
+                          ...s.attributes,
+                          [a.key]: Math.max(0, Number(e.target.value) || 0),
+                        },
+                      }))
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
 
