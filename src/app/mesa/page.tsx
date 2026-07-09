@@ -1,25 +1,68 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Campaign, campaignRepo } from "@/lib/storage";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Campaign, campaignRepo, invitesRepo } from "@/lib/storage";
 
 export default function MesasPage() {
+  return (
+    <Suspense fallback={<div className="py-16 text-center text-zinc-500">Carregando…</div>}>
+      <MesasView />
+    </Suspense>
+  );
+}
+
+function MesasView() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [name, setName] = useState("");
+  const [code, setCode] = useState("");
+  const [joining, setJoining] = useState(false);
+  const [flash, setFlash] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     setCampaigns(await campaignRepo.list());
-  }
+  }, []);
   useEffect(() => {
     load();
+  }, [load]);
+
+  const redeem = useCallback(
+    async (raw: string) => {
+      const clean = raw.trim();
+      if (!clean) return;
+      setJoining(true);
+      setError(null);
+      const result = await invitesRepo.redeem(clean);
+      setJoining(false);
+      if ("error" in result) {
+        setError(result.error);
+        return;
+      }
+      setCode("");
+      router.push(`/mesa/${result.tableId}`);
+    },
+    [router],
+  );
+
+  // Resgata convite vindo por link (?convite=CODE).
+  useEffect(() => {
+    const invite = searchParams.get("convite");
+    if (invite) void redeem(invite);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function create() {
     if (!name.trim()) return;
-    await campaignRepo.create({ name: name.trim() });
+    const c = await campaignRepo.create({ name: name.trim() });
     setName("");
+    setFlash("Mesa criada! Convide seus jogadores dentro dela.");
+    setTimeout(() => setFlash(null), 3000);
     load();
+    router.push(`/mesa/${c.id}`);
   }
 
   async function remove(id: string) {
@@ -37,20 +80,53 @@ export default function MesasPage() {
         </p>
       </div>
 
-      <div className="card flex flex-wrap items-end gap-3 p-5">
-        <div className="flex-1">
-          <label className="label">Nome da nova mesa</label>
-          <input
-            className="input"
-            value={name}
-            placeholder="Ex.: A Queda de Solando"
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && create()}
-          />
+      {flash && (
+        <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+          {flash}
         </div>
-        <button className="btn-sol" onClick={create}>
-          + Criar mesa
-        </button>
+      )}
+      {error && (
+        <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-2 text-sm text-rose-300">
+          {error}
+        </div>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="card flex flex-wrap items-end gap-3 p-5">
+          <div className="flex-1">
+            <label className="label">Nome da nova mesa</label>
+            <input
+              className="input"
+              value={name}
+              placeholder="Ex.: A Queda de Solando"
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && create()}
+            />
+          </div>
+          <button className="btn-sol" onClick={create}>
+            + Criar mesa
+          </button>
+        </div>
+
+        <div className="card flex flex-wrap items-end gap-3 p-5">
+          <div className="flex-1">
+            <label className="label">Entrar por convite</label>
+            <input
+              className="input"
+              value={code}
+              placeholder="Código do convite"
+              onChange={(e) => setCode(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && redeem(code)}
+            />
+          </div>
+          <button
+            className="btn-primary"
+            onClick={() => redeem(code)}
+            disabled={joining || !code.trim()}
+          >
+            {joining ? "Entrando…" : "Entrar"}
+          </button>
+        </div>
       </div>
 
       {campaigns === null ? (
@@ -58,7 +134,7 @@ export default function MesasPage() {
       ) : campaigns.length === 0 ? (
         <div className="card grid place-items-center gap-3 py-16 text-center">
           <span className="text-5xl">🎲</span>
-          <p className="text-zinc-400">Nenhuma mesa criada ainda.</p>
+          <p className="text-zinc-400">Nenhuma mesa ainda. Crie uma ou entre por convite.</p>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

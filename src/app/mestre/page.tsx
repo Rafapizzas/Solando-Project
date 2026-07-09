@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Campaign, campaignRepo, tableRepo } from "@/lib/storage";
+import { Campaign, campaignRepo, tableCharacterRepo } from "@/lib/storage";
 import { Character, derivedStats, effectiveAttributes, forceRank } from "@/lib/solando/character";
 import { analyzeCharacter } from "@/lib/solando/balance";
 import { ATTRIBUTES, rankFor } from "@/lib/solando/rules";
@@ -31,7 +31,8 @@ export default function MestrePage() {
       return;
     }
     (async () => {
-      setChars(await tableRepo.charactersInTable(selected));
+      const list = await tableCharacterRepo.list(selected);
+      setChars(list.map((tc) => tc.character));
     })();
   }, [selected]);
 

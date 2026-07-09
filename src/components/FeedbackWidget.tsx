@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { useProfiles } from "@/lib/profiles";
 
 /**
  * FeedbackWidget — botão flutuante + formulário rápido e divertido para o
@@ -33,7 +32,6 @@ const RATING_HINTS = ["", "Eita…", "Dá pra melhorar", "Tá de boa", "Curti!",
 export function FeedbackWidget() {
   const pathname = usePathname();
   const { profile } = useAuth();
-  const { activeProfile } = useProfiles();
 
   const [open, setOpen] = useState(false);
   const [category, setCategory] = useState<Category>("sugestao");
@@ -87,7 +85,7 @@ export function FeedbackWidget() {
           message: message.trim(),
           email: email.trim() || undefined,
           page: pathname,
-          profileName: activeProfile?.name ?? profile?.displayName,
+          profileName: profile?.displayName,
         }),
       });
       const data = (await res.json()) as { ok?: boolean; error?: string };

@@ -167,6 +167,25 @@ export const characterRepo = {
       read<Character[]>(KEY_CHARACTERS, []).filter((c) => c.id !== id),
     );
   },
+  /** Lê o flag "pública" da ficha (todos autenticados podem ver). */
+  async isPublic(id: string): Promise<boolean> {
+    if (!supabase) return false;
+    const { data } = await supabase
+      .from("characters")
+      .select("is_public")
+      .eq("id", id)
+      .maybeSingle();
+    return data?.is_public === true;
+  },
+  /** Marca/desmarca a ficha como pública. */
+  async setPublic(id: string, value: boolean): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("characters")
+      .update({ is_public: value })
+      .eq("id", id);
+    if (error) throw error;
+  },
 };
 
 // --- Campanhas / Mesas ------------------------------------------------------
@@ -333,8 +352,10 @@ export interface TableMember {
   characterId: string | null;
   characterName: string;
   displayName: string;
+  avatarUrl?: string;
   role: "owner" | "player";
   canManage: boolean;
+  status: "pending" | "accepted";
 }
 
 export interface RollLog {
@@ -396,7 +417,7 @@ export const tableRepo = {
     if (!supabase) return [];
     const { data, error } = await supabase
       .from("table_members")
-      .select("user_id, character_id, role, can_manage")
+      .select("user_id, character_id, role, can_manage, status")
       .eq("table_id", tableId);
     if (error) throw error;
     const rows = (data ?? []) as {
@@ -404,21 +425,21 @@ export const tableRepo = {
       character_id: string | null;
       role: "owner" | "player";
       can_manage: boolean;
+      status: "pending" | "accepted" | null;
     }[];
     if (rows.length === 0) return [];
     const userIds = rows.map((r) => r.user_id);
     const charIds = rows.map((r) => r.character_id).filter((x): x is string => !!x);
     const [{ data: profs }, { data: chars }] = await Promise.all([
-      supabase.from("profiles").select("id, display_name").in("id", userIds),
+      supabase.from("profiles").select("id, display_name, avatar_url").in("id", userIds),
       charIds.length
         ? supabase.from("characters").select("id, name").in("id", charIds)
         : Promise.resolve({ data: [] as { id: string; name: string }[] }),
     ]);
-    const nameByUser = new Map(
-      ((profs ?? []) as { id: string; display_name: string }[]).map((p) => [
-        p.id,
-        p.display_name,
-      ]),
+    const profByUser = new Map(
+      ((profs ?? []) as { id: string; display_name: string; avatar_url: string | null }[]).map(
+        (p) => [p.id, p],
+      ),
     );
     const charName = new Map(
       ((chars ?? []) as { id: string; name: string }[]).map((c) => [c.id, c.name]),
@@ -427,30 +448,12 @@ export const tableRepo = {
       userId: r.user_id,
       characterId: r.character_id,
       characterName: r.character_id ? charName.get(r.character_id) ?? "" : "",
-      displayName: nameByUser.get(r.user_id) ?? "Aventureiro",
+      displayName: profByUser.get(r.user_id)?.display_name ?? "Aventureiro",
+      avatarUrl: profByUser.get(r.user_id)?.avatar_url ?? undefined,
       role: r.role,
       canManage: r.can_manage,
+      status: r.status ?? "accepted",
     }));
-  },
-
-  /** Fichas vinculadas à mesa (visíveis conforme RLS). */
-  async charactersInTable(tableId: string): Promise<Character[]> {
-    if (!supabase) return [];
-    const { data: mems, error } = await supabase
-      .from("table_members")
-      .select("character_id")
-      .eq("table_id", tableId);
-    if (error) throw error;
-    const ids = ((mems ?? []) as { character_id: string | null }[])
-      .map((m) => m.character_id)
-      .filter((x): x is string => !!x);
-    if (ids.length === 0) return [];
-    const { data, error: cErr } = await supabase
-      .from("characters")
-      .select("id, name, avatar_url, data")
-      .in("id", ids);
-    if (cErr) throw cErr;
-    return (data ?? []).map(rowToCharacter);
   },
 
   /** Entra na mesa (ou troca o personagem escolhido). */
@@ -466,6 +469,7 @@ export const tableRepo = {
         character_id: characterId,
         role,
         can_manage: role === "owner",
+        status: "accepted",
       },
       { onConflict: "table_id,user_id" },
     );
@@ -596,5 +600,656 @@ export async function uploadCharacterAvatar(
   const { data } = supabase.storage.from("avatars").getPublicUrl(path);
   return `${data.publicUrl}?v=${Date.now()}`;
 }
+
+/**
+ * Envia a foto de perfil do usuário para o bucket `avatars`
+ * (uid/profile.<ext>). Retorna a URL pública (com cache-busting).
+ */
+export async function uploadUserAvatar(file: File): Promise<string> {
+  const uidUser = await currentUserId();
+  if (!uidUser || !supabase) {
+    throw new Error("Entre na sua conta para enviar imagens.");
+  }
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Selecione um arquivo de imagem.");
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error("Imagem muito grande (máx. 5 MB).");
+  }
+  const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const path = `${uidUser}/profile.${ext || "png"}`;
+  const { error } = await supabase.storage.from("avatars").upload(path, file, {
+    upsert: true,
+    cacheControl: "3600",
+    contentType: file.type || undefined,
+  });
+  if (error) throw error;
+  const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+  return `${data.publicUrl}?v=${Date.now()}`;
+}
+
+// --- Conta (perfil no banco) ------------------------------------------------
+
+export interface Account {
+  id: string;
+  displayName: string;
+  avatarUrl?: string;
+  friendCode: string;
+}
+
+export const accountRepo = {
+  /** Perfil da conta autenticada (nome, avatar e código de amigo). */
+  async get(): Promise<Account | null> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) return null;
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, display_name, avatar_url, friend_code")
+      .eq("id", uidUser)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    return {
+      id: data.id,
+      displayName: data.display_name ?? "Aventureiro",
+      avatarUrl: data.avatar_url ?? undefined,
+      friendCode: data.friend_code ?? "",
+    };
+  },
+  /** Atualiza nome e/ou avatar do perfil. */
+  async update(patch: { displayName?: string; avatarUrl?: string }): Promise<void> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) return;
+    const row: Record<string, unknown> = { id: uidUser };
+    if (patch.displayName !== undefined) row.display_name = patch.displayName;
+    if (patch.avatarUrl !== undefined) row.avatar_url = patch.avatarUrl;
+    const { error } = await supabase
+      .from("profiles")
+      .upsert(row, { onConflict: "id" });
+    if (error) throw error;
+  },
+};
+
+// --- Presença (online/offline/em sessão/mestrando) --------------------------
+
+export type PresenceStatus = "online" | "offline" | "in_session" | "mastering";
+
+export interface Presence {
+  status: PresenceStatus;
+  currentTableId: string | null;
+  lastSeen: number;
+}
+
+export const presenceRepo = {
+  /** Publica o status atual do usuário (heartbeat). */
+  async set(status: PresenceStatus, currentTableId: string | null = null): Promise<void> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) return;
+    const { error } = await supabase.from("user_presence").upsert(
+      {
+        user_id: uidUser,
+        status,
+        current_table_id: currentTableId,
+        last_seen: new Date().toISOString(),
+      },
+      { onConflict: "user_id" },
+    );
+    if (error) throw error;
+  },
+};
+
+/** Considera "offline" quem não dá sinal há mais de 2 minutos. */
+function normalizePresence(
+  row: { status: PresenceStatus; current_table_id: string | null; last_seen: string } | undefined,
+): Presence {
+  if (!row) return { status: "offline", currentTableId: null, lastSeen: 0 };
+  const lastSeen = new Date(row.last_seen).getTime();
+  const stale = Date.now() - lastSeen > 2 * 60 * 1000;
+  return {
+    status: stale ? "offline" : row.status,
+    currentTableId: row.current_table_id,
+    lastSeen,
+  };
+}
+
+// --- Amigos -----------------------------------------------------------------
+
+export interface Friend {
+  friendshipId: string;
+  userId: string;
+  displayName: string;
+  avatarUrl?: string;
+  friendCode: string;
+  presence: Presence;
+}
+
+export interface FriendRequest {
+  friendshipId: string;
+  userId: string;
+  displayName: string;
+  avatarUrl?: string;
+  friendCode: string;
+  direction: "incoming" | "outgoing";
+}
+
+interface FriendshipRow {
+  id: string;
+  requester_id: string;
+  addressee_id: string;
+  status: "pending" | "accepted" | "blocked";
+}
+
+async function hydrateUsers(
+  ids: string[],
+): Promise<Map<string, { displayName: string; avatarUrl?: string; friendCode: string }>> {
+  const map = new Map<string, { displayName: string; avatarUrl?: string; friendCode: string }>();
+  if (!supabase || ids.length === 0) return map;
+  const { data } = await supabase
+    .from("profiles")
+    .select("id, display_name, avatar_url, friend_code")
+    .in("id", ids);
+  for (const p of (data ?? []) as {
+    id: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    friend_code: string | null;
+  }[]) {
+    map.set(p.id, {
+      displayName: p.display_name ?? "Aventureiro",
+      avatarUrl: p.avatar_url ?? undefined,
+      friendCode: p.friend_code ?? "",
+    });
+  }
+  return map;
+}
+
+export const friendsRepo = {
+  /** Amigos aceitos, com presença. */
+  async list(): Promise<Friend[]> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) return [];
+    const { data, error } = await supabase
+      .from("friendships")
+      .select("id, requester_id, addressee_id, status")
+      .eq("status", "accepted");
+    if (error) throw error;
+    const rows = (data ?? []) as FriendshipRow[];
+    const otherIds = rows.map((r) => (r.requester_id === uidUser ? r.addressee_id : r.requester_id));
+    const [users, presByUser] = await Promise.all([
+      hydrateUsers(otherIds),
+      (async () => {
+        const map = new Map<string, Presence>();
+        if (otherIds.length === 0) return map;
+        const { data: pres } = await supabase!
+          .from("user_presence")
+          .select("user_id, status, current_table_id, last_seen")
+          .in("user_id", otherIds);
+        for (const p of (pres ?? []) as {
+          user_id: string;
+          status: PresenceStatus;
+          current_table_id: string | null;
+          last_seen: string;
+        }[]) {
+          map.set(p.user_id, normalizePresence(p));
+        }
+        return map;
+      })(),
+    ]);
+    return rows.map((r) => {
+      const other = r.requester_id === uidUser ? r.addressee_id : r.requester_id;
+      const u = users.get(other);
+      return {
+        friendshipId: r.id,
+        userId: other,
+        displayName: u?.displayName ?? "Aventureiro",
+        avatarUrl: u?.avatarUrl,
+        friendCode: u?.friendCode ?? "",
+        presence: presByUser.get(other) ?? normalizePresence(undefined),
+      };
+    });
+  },
+
+  /** Pedidos de amizade pendentes (recebidos e enviados). */
+  async requests(): Promise<FriendRequest[]> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) return [];
+    const { data, error } = await supabase
+      .from("friendships")
+      .select("id, requester_id, addressee_id, status")
+      .eq("status", "pending");
+    if (error) throw error;
+    const rows = (data ?? []) as FriendshipRow[];
+    const otherIds = rows.map((r) => (r.requester_id === uidUser ? r.addressee_id : r.requester_id));
+    const users = await hydrateUsers(otherIds);
+    return rows.map((r) => {
+      const incoming = r.addressee_id === uidUser;
+      const other = incoming ? r.requester_id : r.addressee_id;
+      const u = users.get(other);
+      return {
+        friendshipId: r.id,
+        userId: other,
+        displayName: u?.displayName ?? "Aventureiro",
+        avatarUrl: u?.avatarUrl,
+        friendCode: u?.friendCode ?? "",
+        direction: incoming ? "incoming" : "outgoing",
+      };
+    });
+  },
+
+  /** Envia pedido de amizade pelo código do outro usuário. */
+  async addByCode(code: string): Promise<string | null> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) return "Entre na sua conta para adicionar amigos.";
+    const clean = code.trim().toUpperCase();
+    if (!clean) return "Informe um código de amigo.";
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("friend_code", clean)
+      .maybeSingle();
+    if (!prof) return "Código de amigo não encontrado.";
+    if (prof.id === uidUser) return "Esse é o seu próprio código.";
+    const { error } = await supabase.from("friendships").insert({
+      requester_id: uidUser,
+      addressee_id: prof.id,
+      status: "pending",
+    });
+    if (error) {
+      if (error.code === "23505") return "Vocês já têm um pedido ou amizade.";
+      return error.message;
+    }
+    return null;
+  },
+
+  /** Aceita um pedido recebido. */
+  async accept(friendshipId: string): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("friendships")
+      .update({ status: "accepted" })
+      .eq("id", friendshipId);
+    if (error) throw error;
+  },
+
+  /** Recusa/cancela/remove uma amizade ou pedido. */
+  async remove(friendshipId: string): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase.from("friendships").delete().eq("id", friendshipId);
+    if (error) throw error;
+  },
+};
+
+// --- Convites de mesa -------------------------------------------------------
+
+export interface TableInvite {
+  id: string;
+  tableId: string;
+  code: string;
+  invitedEmail: string | null;
+  expiresAt: number | null;
+  maxUses: number | null;
+  uses: number;
+  createdAt: number;
+}
+
+interface InviteRow {
+  id: string;
+  table_id: string;
+  code: string;
+  invited_email: string | null;
+  expires_at: string | null;
+  max_uses: number | null;
+  uses: number;
+  created_at: string;
+}
+
+function rowToInvite(r: InviteRow): TableInvite {
+  return {
+    id: r.id,
+    tableId: r.table_id,
+    code: r.code,
+    invitedEmail: r.invited_email,
+    expiresAt: r.expires_at ? new Date(r.expires_at).getTime() : null,
+    maxUses: r.max_uses,
+    uses: r.uses,
+    createdAt: new Date(r.created_at).getTime(),
+  };
+}
+
+export const invitesRepo = {
+  /** Cria um convite (código curto) para a mesa. */
+  async create(
+    tableId: string,
+    opts: { email?: string; expiresAt?: number | null; maxUses?: number | null } = {},
+  ): Promise<TableInvite> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) throw new Error("Indisponível offline.");
+    const code = uid("inv").replace(/[^a-zA-Z0-9]/g, "").slice(0, 10).toUpperCase();
+    const { data, error } = await supabase
+      .from("table_invites")
+      .insert({
+        table_id: tableId,
+        code,
+        invited_email: opts.email?.trim() || null,
+        created_by: uidUser,
+        expires_at: opts.expiresAt ? new Date(opts.expiresAt).toISOString() : null,
+        max_uses: opts.maxUses ?? null,
+      })
+      .select("id, table_id, code, invited_email, expires_at, max_uses, uses, created_at")
+      .single();
+    if (error) throw error;
+    return rowToInvite(data as InviteRow);
+  },
+
+  /** Lista os convites ativos de uma mesa (para o mestre). */
+  async list(tableId: string): Promise<TableInvite[]> {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from("table_invites")
+      .select("id, table_id, code, invited_email, expires_at, max_uses, uses, created_at")
+      .eq("table_id", tableId)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return ((data ?? []) as InviteRow[]).map(rowToInvite);
+  },
+
+  async revoke(id: string): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase.from("table_invites").delete().eq("id", id);
+    if (error) throw error;
+  },
+
+  /** Convida um amigo direto para a mesa (entra como membro pendente). */
+  async inviteFriend(tableId: string, userId: string): Promise<string | null> {
+    if (!supabase) return "Indisponível offline.";
+    const { error } = await supabase.from("table_members").upsert(
+      {
+        table_id: tableId,
+        user_id: userId,
+        role: "player",
+        can_manage: false,
+        status: "pending",
+      },
+      { onConflict: "table_id,user_id" },
+    );
+    return error ? error.message : null;
+  },
+
+  /** Entra numa mesa a partir de um código de convite. Retorna o tableId. */
+  async redeem(code: string): Promise<{ tableId: string } | { error: string }> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) return { error: "Entre na sua conta para aceitar convites." };
+    const clean = code.trim();
+    if (!clean) return { error: "Informe um código de convite." };
+    const { data, error } = await supabase
+      .from("table_invites")
+      .select("id, table_id, expires_at, max_uses, uses")
+      .eq("code", clean)
+      .maybeSingle();
+    if (error) return { error: error.message };
+    if (!data) return { error: "Convite não encontrado." };
+    if (data.expires_at && new Date(data.expires_at).getTime() < Date.now()) {
+      return { error: "Convite expirado." };
+    }
+    if (data.max_uses != null && data.uses >= data.max_uses) {
+      return { error: "Convite esgotado." };
+    }
+    const { error: joinErr } = await supabase.from("table_members").upsert(
+      {
+        table_id: data.table_id,
+        user_id: uidUser,
+        role: "player",
+        can_manage: false,
+        status: "accepted",
+      },
+      { onConflict: "table_id,user_id" },
+    );
+    if (joinErr) return { error: joinErr.message };
+    await supabase
+      .from("table_invites")
+      .update({ uses: (data.uses ?? 0) + 1 })
+      .eq("id", data.id);
+    return { tableId: data.table_id };
+  },
+};
+
+// --- Fichas por mesa (cópias independentes) ---------------------------------
+
+export interface TableCharacter {
+  id: string;
+  tableId: string;
+  ownerId: string;
+  baseCharacterId: string | null;
+  character: Character;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface TableCharacterRow {
+  id: string;
+  table_id: string;
+  owner_id: string;
+  base_character_id: string | null;
+  name: string | null;
+  avatar_url: string | null;
+  data: unknown;
+  created_at: string;
+  updated_at: string;
+}
+
+function rowToTableCharacter(row: TableCharacterRow): TableCharacter {
+  const base = (row.data && typeof row.data === "object" ? row.data : {}) as Partial<Character>;
+  return {
+    id: row.id,
+    tableId: row.table_id,
+    ownerId: row.owner_id,
+    baseCharacterId: row.base_character_id,
+    character: normalizeCharacter({
+      ...base,
+      id: row.id,
+      name: row.name ?? base.name ?? "",
+      avatarUrl: row.avatar_url ?? base.avatarUrl,
+    }),
+    createdAt: new Date(row.created_at).getTime(),
+    updatedAt: new Date(row.updated_at).getTime(),
+  };
+}
+
+export const tableCharacterRepo = {
+  /**
+   * Fichas da mesa visíveis para o usuário: o mestre vê todas; o jogador vê
+   * apenas a sua (garantido pelas políticas RLS).
+   */
+  async list(tableId: string): Promise<TableCharacter[]> {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from("table_characters")
+      .select(
+        "id, table_id, owner_id, base_character_id, name, avatar_url, data, created_at, updated_at",
+      )
+      .eq("table_id", tableId)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return ((data ?? []) as TableCharacterRow[]).map(rowToTableCharacter);
+  },
+
+  /** A ficha do usuário nesta mesa (se existir). */
+  async mine(tableId: string): Promise<TableCharacter | null> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) return null;
+    const { data, error } = await supabase
+      .from("table_characters")
+      .select(
+        "id, table_id, owner_id, base_character_id, name, avatar_url, data, created_at, updated_at",
+      )
+      .eq("table_id", tableId)
+      .eq("owner_id", uidUser)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? rowToTableCharacter(data as TableCharacterRow) : null;
+  },
+
+  /** Cria a cópia da ficha na mesa a partir de uma ficha base do usuário. */
+  async createFromBase(tableId: string, base: Character): Promise<TableCharacter> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) throw new Error("Indisponível offline.");
+    const copy = normalizeCharacter({ ...base });
+    const { data, error } = await supabase
+      .from("table_characters")
+      .insert({
+        table_id: tableId,
+        owner_id: uidUser,
+        base_character_id: base.id,
+        name: copy.name,
+        avatar_url: copy.avatarUrl ?? null,
+        data: copy,
+      })
+      .select(
+        "id, table_id, owner_id, base_character_id, name, avatar_url, data, created_at, updated_at",
+      )
+      .single();
+    if (error) throw error;
+    return rowToTableCharacter(data as TableCharacterRow);
+  },
+
+  /** Salva alterações na cópia da mesa (não afeta a ficha base nem outras mesas). */
+  async save(id: string, character: Character): Promise<TableCharacter> {
+    if (!supabase) throw new Error("Indisponível offline.");
+    const updated = normalizeCharacter({ ...character });
+    const { data, error } = await supabase
+      .from("table_characters")
+      .update({
+        name: updated.name,
+        avatar_url: updated.avatarUrl ?? null,
+        data: updated,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .select(
+        "id, table_id, owner_id, base_character_id, name, avatar_url, data, created_at, updated_at",
+      )
+      .single();
+    if (error) throw error;
+    return rowToTableCharacter(data as TableCharacterRow);
+  },
+
+  async remove(id: string): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase.from("table_characters").delete().eq("id", id);
+    if (error) throw error;
+  },
+};
+
+// --- Compartilhamento de fichas base (grants) -------------------------------
+
+export type GrantPermission = "view" | "use" | "edit";
+
+export interface CharacterGrant {
+  id: string;
+  characterId: string;
+  granteeId: string;
+  displayName: string;
+  avatarUrl?: string;
+  friendCode: string;
+  permission: GrantPermission;
+}
+
+interface GrantRow {
+  id: string;
+  character_id: string;
+  owner_id: string;
+  grantee_id: string;
+  permission: GrantPermission;
+}
+
+export const grantsRepo = {
+  /** Pessoas com quem uma ficha base foi compartilhada. */
+  async listForCharacter(characterId: string): Promise<CharacterGrant[]> {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from("character_grants")
+      .select("id, character_id, owner_id, grantee_id, permission")
+      .eq("character_id", characterId);
+    if (error) throw error;
+    const rows = (data ?? []) as GrantRow[];
+    const users = await hydrateUsers(rows.map((r) => r.grantee_id));
+    return rows.map((r) => {
+      const u = users.get(r.grantee_id);
+      return {
+        id: r.id,
+        characterId: r.character_id,
+        granteeId: r.grantee_id,
+        displayName: u?.displayName ?? "Aventureiro",
+        avatarUrl: u?.avatarUrl,
+        friendCode: u?.friendCode ?? "",
+        permission: r.permission,
+      };
+    });
+  },
+
+  /** Compartilha uma ficha com alguém pelo código de amigo. */
+  async addByCode(
+    characterId: string,
+    code: string,
+    permission: GrantPermission,
+  ): Promise<string | null> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) return "Entre na sua conta para compartilhar.";
+    const clean = code.trim().toUpperCase();
+    if (!clean) return "Informe um código de amigo.";
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("friend_code", clean)
+      .maybeSingle();
+    if (!prof) return "Código de amigo não encontrado.";
+    if (prof.id === uidUser) return "Você já é o dono desta ficha.";
+    const { error } = await supabase.from("character_grants").upsert(
+      {
+        character_id: characterId,
+        owner_id: uidUser,
+        grantee_id: prof.id,
+        permission,
+      },
+      { onConflict: "character_id,grantee_id" },
+    );
+    if (error) return error.message;
+    return null;
+  },
+
+  async setPermission(id: string, permission: GrantPermission): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("character_grants")
+      .update({ permission })
+      .eq("id", id);
+    if (error) throw error;
+  },
+
+  async remove(id: string): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase.from("character_grants").delete().eq("id", id);
+    if (error) throw error;
+  },
+
+  /** Fichas que outras pessoas compartilharam comigo. */
+  async sharedWithMe(): Promise<Character[]> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) return [];
+    const { data, error } = await supabase
+      .from("character_grants")
+      .select("character_id")
+      .eq("grantee_id", uidUser);
+    if (error) throw error;
+    const ids = ((data ?? []) as { character_id: string }[]).map((g) => g.character_id);
+    if (ids.length === 0) return [];
+    const { data: chars, error: cErr } = await supabase
+      .from("characters")
+      .select("id, name, avatar_url, data")
+      .in("id", ids);
+    if (cErr) throw cErr;
+    return (chars ?? []).map(rowToCharacter);
+  },
+};
 
 export { uid };

@@ -1,4 +1,5 @@
 import { CharacterEditor } from "@/components/CharacterEditor";
+import { ShareCharacter } from "@/components/ShareCharacter";
 
 export default function EditarFichaPage({
   params,
@@ -12,6 +13,7 @@ export default function EditarFichaPage({
         <p className="mt-1 text-zinc-400">Ajuste seu personagem quando quiser.</p>
       </div>
       <CharacterEditor characterId={params.id} />
+      <ShareCharacter characterId={params.id} />
     </div>
   );
 }

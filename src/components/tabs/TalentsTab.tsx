@@ -20,6 +20,7 @@ export function TalentsTab({ character, patch }: TabProps) {
   const spent = talentPointsSpent(character);
   const left = available - spent;
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
 
   function addTalent(def: TalentDef, points: number, effect: string) {
     const t: Talent = {
@@ -46,7 +47,8 @@ export function TalentsTab({ character, patch }: TabProps) {
         </div>
         <p className="mb-3 text-xs text-zinc-500">
           Você começa com <b className="text-sol-soft">5 pontos de talento</b> no nível 0, +1
-          por nível (algumas classes dão bônus). {left >= 0 ? `Restam ${left}.` : ""}
+          por nível (algumas classes dão bônus). {left >= 0 ? `Restam ${left}.` : `${Math.abs(left)} acima do sugerido (sem trava).`} Alguns talentos
+          (ex.: Arrojado, Super Força) somam <b className="text-emerald-400">atributos</b> na ficha.
         </p>
 
         <div className="space-y-2">
@@ -82,8 +84,29 @@ export function TalentsTab({ character, patch }: TabProps) {
 
       {open && (
         <div className="card space-y-4 p-5">
+          <label className="relative block">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
+              🔍
+            </span>
+            <input
+              className="input pl-9"
+              placeholder="Buscar talento por nome ou efeito…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </label>
           {TALENT_CATEGORIES.map((cat) => {
-            const list = TALENTS.filter((t) => t.category === cat.key);
+            const q = query.trim().toLowerCase();
+            const list = TALENTS.filter((t) => t.category === cat.key)
+              .filter(
+                (t) =>
+                  !q ||
+                  t.name.toLowerCase().includes(q) ||
+                  t.summary.toLowerCase().includes(q) ||
+                  t.tiers.some((tier) => tier.effect.toLowerCase().includes(q)),
+              )
+              .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+            if (list.length === 0) return null;
             return (
               <div key={cat.key}>
                 <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-zinc-500">
@@ -104,15 +127,20 @@ export function TalentsTab({ character, patch }: TabProps) {
                             <button
                               key={tier.points}
                               onClick={() => addTalent(t, tier.points, tier.effect)}
-                              disabled={!affordable}
-                              title={tier.effect}
+                              title={
+                                affordable
+                                  ? tier.effect
+                                  : `${tier.effect} — passa do orçamento (dica, não trava)`
+                              }
                               className={`chip text-left ${
                                 affordable
                                   ? "hover:border-sol/60 hover:text-sol-soft"
-                                  : "opacity-40"
+                                  : "border-amber-400/40 text-amber-300/80 hover:border-amber-400/70"
                               }`}
                             >
-                              <b className="text-sol-soft">{tier.points}pt</b>
+                              <b className={affordable ? "text-sol-soft" : "text-amber-300"}>
+                                {tier.points}pt
+                              </b>
                               <span className="max-w-[220px] truncate">{tier.effect}</span>
                             </button>
                           );

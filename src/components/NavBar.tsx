@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { useAuth } from "@/lib/auth";
-import { useProfiles } from "@/lib/profiles";
 import { AccountMenu } from "@/components/AccountMenu";
 
 const baseLinks = [
@@ -22,12 +21,13 @@ const baseLinks = [
 export function NavBar() {
   const pathname = usePathname();
   const { isAuthenticated, ready } = useAuth();
-  const { canMaster } = useProfiles();
 
   const links = [...baseLinks];
-  // "Minhas Mesas" só para perfis com acesso de Mestre.
-  if (isAuthenticated && canMaster)
+  // Qualquer conta pode mestrar: o papel de mestre é por mesa (dono da mesa).
+  if (isAuthenticated) {
     links.splice(3, 0, { href: "/mestre", label: "Minhas Mesas" });
+    links.push({ href: "/amigos", label: "Amigos" });
+  }
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-void-950/70 backdrop-blur-md">

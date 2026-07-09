@@ -8,6 +8,8 @@ import {
   campaignRepo,
   characterRepo,
   tableRepo,
+  tableCharacterRepo,
+  TableCharacter,
   TableMember,
   RollLog,
 } from "@/lib/storage";
@@ -17,7 +19,9 @@ import { ATTRIBUTES, rankFor } from "@/lib/solando/rules";
 import { RollResult, rollAttribute } from "@/lib/solando/dice";
 import { DiceRoller } from "@/components/DiceRoller";
 import { MesaAssistant } from "@/components/MesaAssistant";
+import { MesaInvite } from "@/components/MesaInvite";
 import { useAuth } from "@/lib/auth";
+import { usePresence } from "@/lib/presence";
 import { useRollFx } from "@/lib/rollFx";
 
 const REACTIONS = ["🔥", "🎯", "😂", "💀", "❤️"];
@@ -25,11 +29,12 @@ const REACTIONS = ["🔥", "🎯", "😂", "💀", "❤️"];
 export default function MesaRoomPage({ params }: { params: { id: string } }) {
   const { user, profile } = useAuth();
   const fx = useRollFx();
+  const presence = usePresence();
   const myId = user?.id ?? null;
 
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [members, setMembers] = useState<TableMember[]>([]);
-  const [tableChars, setTableChars] = useState<Character[]>([]);
+  const [tableChars, setTableChars] = useState<TableCharacter[]>([]);
   const [myChars, setMyChars] = useState<Character[]>([]);
   const [rolls, setRolls] = useState<RollLog[]>([]);
   const [secretMode, setSecretMode] = useState(false);
@@ -37,8 +42,8 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
 
   const iAmMaster = !!myId && campaign?.ownerId === myId;
   const myMembership = members.find((m) => m.userId === myId) ?? null;
-  const myCharacter =
-    tableChars.find((c) => c.id === myMembership?.characterId) ?? null;
+  const myTableChar = tableChars.find((c) => c.ownerId === myId) ?? null;
+  const myCharacter = myTableChar?.character ?? null;
 
   const lastRoll = rolls[0]
     ? `${rolls[0].characterName} ${rolls[0].text}${
@@ -54,7 +59,7 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
     const [c, mems, chars, mine] = await Promise.all([
       campaignRepo.get(params.id),
       tableRepo.members(params.id),
-      tableRepo.charactersInTable(params.id),
+      tableCharacterRepo.list(params.id),
       characterRepo.list(),
     ]);
     setCampaign(c ?? null);
@@ -78,14 +83,33 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
 
-  async function chooseCharacter(charId: string) {
-    await tableRepo.join(params.id, charId || null);
+  // Presença: marca "mestrando" ou "em sessão" enquanto está na sala.
+  useEffect(() => {
+    if (!campaign || !myId) return;
+    presence.setContext(iAmMaster ? "mastering" : "in_session", params.id);
+    return () => presence.clearContext();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaign?.id, iAmMaster, myId, params.id]);
+
+  async function chooseCharacter(baseId: string) {
+    if (!baseId) return;
+    // Se já existe uma cópia minha nesta mesa, apenas garante a associação.
+    const existing = myTableChar;
+    if (!existing) {
+      const base = myChars.find((c) => c.id === baseId);
+      if (base) {
+        const copy = await tableCharacterRepo.createFromBase(params.id, base);
+        await tableRepo.join(params.id, copy.id);
+      }
+    }
     await loadTable();
   }
 
   async function leaveTable() {
-    if (!confirm("Sair desta mesa?")) return;
+    if (!confirm("Sair desta mesa? Sua ficha desta mesa é mantida para quando voltar."))
+      return;
     await tableRepo.leave(params.id);
+    presence.clearContext();
     await loadTable();
   }
 
@@ -161,29 +185,42 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
       {/* Entrar / escolher personagem */}
       <div className="card p-5">
         <h3 className="mb-3 font-display text-lg font-bold text-zinc-100">
-          {myMembership ? "Seu personagem nesta mesa" : "Entrar na mesa"}
+          {myTableChar ? "Sua ficha nesta mesa" : "Entrar na mesa"}
         </h3>
-        <div className="flex flex-wrap items-center gap-3">
-          <select
-            className="input max-w-xs"
-            value={myMembership?.characterId ?? ""}
-            onChange={(e) => chooseCharacter(e.target.value)}
-          >
-            <option value="">
-              {iAmMaster ? "— Mestrar sem personagem —" : "— Escolha um personagem —"}
-            </option>
-            {myChars.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name || "Sem nome"}
+        {myTableChar ? (
+          <p className="text-sm text-zinc-300">
+            Você está jogando com{" "}
+            <span className="font-semibold text-zinc-100">
+              {myCharacter?.name || "sem nome"}
+            </span>
+            . Esta é uma <b>cópia independente</b> desta mesa — o progresso aqui não
+            altera sua ficha original nem outras mesas.
+          </p>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              className="input max-w-xs"
+              defaultValue=""
+              onChange={(e) => chooseCharacter(e.target.value)}
+            >
+              <option value="">
+                {iAmMaster
+                  ? "— Trazer uma ficha para a mesa —"
+                  : "— Escolha a ficha que vai trazer —"}
               </option>
-            ))}
-          </select>
-          {myChars.length === 0 && (
-            <Link href="/ficha" className="text-sm text-mente-soft underline">
-              Você ainda não tem fichas — criar uma
-            </Link>
-          )}
-        </div>
+              {myChars.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name || "Sem nome"}
+                </option>
+              ))}
+            </select>
+            {myChars.length === 0 && (
+              <Link href="/ficha" className="text-sm text-mente-soft underline">
+                Você ainda não tem fichas — criar uma
+              </Link>
+            )}
+          </div>
+        )}
         {members.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-4">
             {members.map((m) => (
@@ -193,12 +230,16 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
                 title={m.role === "owner" ? "Mestre" : "Jogador"}
               >
                 {m.role === "owner" ? "👑" : "🎭"} {m.displayName}
-                {m.characterName ? ` · ${m.characterName}` : ""}
+                {m.status === "pending" ? " · pendente" : ""}
               </span>
             ))}
           </div>
         )}
       </div>
+
+      {iAmMaster && (
+        <MesaInvite tableId={params.id} tableName={campaign.name} onChange={loadTable} />
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-4">
@@ -208,15 +249,17 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
             </h3>
             {tableChars.length === 0 && (
               <p className="text-sm text-zinc-500">
-                Nenhum personagem escolhido ainda. Escolha o seu acima.
+                {iAmMaster
+                  ? "Nenhum jogador trouxe ficha ainda."
+                  : "Nenhuma ficha sua na mesa. Traga a sua acima."}
               </p>
             )}
             <div className="space-y-3">
-              {tableChars.map((c) => (
+              {tableChars.map((tc) => (
                 <PlayerRow
-                  key={c.id}
-                  character={c}
-                  onRoll={(text, result) => pushRoll(c, text, result)}
+                  key={tc.id}
+                  character={tc.character}
+                  onRoll={(text, result) => pushRoll(tc.character, text, result)}
                 />
               ))}
             </div>
@@ -368,12 +411,6 @@ function PlayerRow({
         <span className="font-semibold text-zinc-100">
           {character.name || "Sem nome"}
         </span>
-        <Link
-          href={`/ficha/${character.id}/ver`}
-          className="ml-auto text-xs text-mente-soft underline"
-        >
-          Ver ficha
-        </Link>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {ATTRIBUTES.map((a) => {

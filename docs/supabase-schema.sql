@@ -131,6 +131,33 @@ create policy classes_public_read on public.custom_classes
   for select to authenticated using (is_public = true);
 
 -- ----------------------------------------------------------------------------
+-- SHARED SKILLS (Grimório): skills criadas por jogadores, compartilhadas com
+-- todos (mesmo padrão de custom_races/classes).
+-- ----------------------------------------------------------------------------
+create table if not exists public.shared_skills (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users (id) on delete cascade,
+  slug text not null,
+  data jsonb not null default '{}'::jsonb,
+  is_public boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+alter table public.shared_skills enable row level security;
+
+do $$ begin
+  alter table public.shared_skills
+    add constraint shared_skills_owner_slug_key unique (owner_id, slug);
+exception when duplicate_object then null; end $$;
+
+drop policy if exists shared_skills_owner_all on public.shared_skills;
+create policy shared_skills_owner_all on public.shared_skills
+  for all to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+drop policy if exists shared_skills_public_read on public.shared_skills;
+create policy shared_skills_public_read on public.shared_skills
+  for select to authenticated using (is_public = true);
+
+-- ----------------------------------------------------------------------------
 -- CAMPAIGNS (mesas): dono é o mestre.
 -- ----------------------------------------------------------------------------
 create table if not exists public.campaigns (
@@ -358,3 +385,174 @@ create policy avatars_delete on storage.objects
 -- Realtime (para a mesa atualizar rolagens ao vivo)
 alter publication supabase_realtime add table public.roll_logs;
 alter publication supabase_realtime add table public.table_members;
+
+-- ============================================================================
+-- BIG UPDATE 2026-07 — Mesa no centro, amigos+presença, convites, cópias de
+-- ficha por mesa, compartilhamento de fichas e correção de privacidade.
+-- Papel passa a ser POR MESA (mestre = dono; jogador = membro). Perfis globais
+-- deixam de controlar acesso. Idempotente: seguro rodar novamente.
+-- ============================================================================
+
+-- 1) PROFILES: código de amigo -----------------------------------------------
+alter table public.profiles add column if not exists friend_code text;
+update public.profiles
+  set friend_code = upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8))
+  where friend_code is null;
+do $$ begin
+  alter table public.profiles add constraint profiles_friend_code_key unique (friend_code);
+exception when duplicate_object then null; end $$;
+
+-- 2) AMIZADES (pedido/aceito/bloqueado) --------------------------------------
+create table if not exists public.friendships (
+  id uuid primary key default gen_random_uuid(),
+  requester_id uuid not null references auth.users (id) on delete cascade,
+  addressee_id uuid not null references auth.users (id) on delete cascade,
+  status text not null default 'pending' check (status in ('pending', 'accepted', 'blocked')),
+  created_at timestamptz not null default now(),
+  unique (requester_id, addressee_id),
+  check (requester_id <> addressee_id)
+);
+alter table public.friendships enable row level security;
+
+create or replace function public.are_friends(a uuid, b uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.friendships f
+    where f.status = 'accepted'
+      and ((f.requester_id = a and f.addressee_id = b)
+        or (f.requester_id = b and f.addressee_id = a))
+  );
+$$;
+
+drop policy if exists friendships_insert on public.friendships;
+create policy friendships_insert on public.friendships
+  for insert to authenticated with check (requester_id = auth.uid());
+drop policy if exists friendships_select on public.friendships;
+create policy friendships_select on public.friendships
+  for select to authenticated using (requester_id = auth.uid() or addressee_id = auth.uid());
+drop policy if exists friendships_update on public.friendships;
+create policy friendships_update on public.friendships
+  for update to authenticated
+  using (requester_id = auth.uid() or addressee_id = auth.uid())
+  with check (requester_id = auth.uid() or addressee_id = auth.uid());
+drop policy if exists friendships_delete on public.friendships;
+create policy friendships_delete on public.friendships
+  for delete to authenticated using (requester_id = auth.uid() or addressee_id = auth.uid());
+
+-- 3) PRESENÇA (online/offline/em sessão/mestrando) ---------------------------
+create table if not exists public.user_presence (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  status text not null default 'offline'
+    check (status in ('online', 'offline', 'in_session', 'mastering')),
+  current_table_id uuid references public.campaigns (id) on delete set null,
+  last_seen timestamptz not null default now()
+);
+alter table public.user_presence enable row level security;
+
+drop policy if exists presence_self on public.user_presence;
+create policy presence_self on public.user_presence
+  for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists presence_friends_read on public.user_presence;
+create policy presence_friends_read on public.user_presence
+  for select to authenticated
+  using (user_id = auth.uid() or public.are_friends(user_id, auth.uid()));
+
+alter publication supabase_realtime add table public.user_presence;
+
+-- 4) TABLE_MEMBERS: status do convite (pendente/aceito) ----------------------
+alter table public.table_members
+  add column if not exists status text not null default 'accepted'
+  check (status in ('pending', 'accepted'));
+
+-- 5) CONVITES DE MESA (código/link + e-mail) ---------------------------------
+create table if not exists public.table_invites (
+  id uuid primary key default gen_random_uuid(),
+  table_id uuid not null references public.campaigns (id) on delete cascade,
+  code text not null unique,
+  invited_email text,
+  created_by uuid not null references auth.users (id) on delete cascade,
+  expires_at timestamptz,
+  max_uses int,
+  uses int not null default 0,
+  created_at timestamptz not null default now()
+);
+alter table public.table_invites enable row level security;
+
+drop policy if exists invites_manage on public.table_invites;
+create policy invites_manage on public.table_invites
+  for all to authenticated
+  using (public.can_manage_table(table_id)) with check (public.can_manage_table(table_id));
+-- Leitura liberada para autenticados: valida o código ao entrar (códigos são aleatórios).
+drop policy if exists invites_read on public.table_invites;
+create policy invites_read on public.table_invites
+  for select to authenticated using (true);
+
+-- 6) TABLE_CHARACTERS: cópia INDEPENDENTE da ficha por mesa ------------------
+-- Cada mesa tem sua própria cópia; feitos/progresso de uma mesa não afetam a
+-- outra. owner_id = quem controla a ficha nesta mesa.
+create table if not exists public.table_characters (
+  id uuid primary key default gen_random_uuid(),
+  table_id uuid not null references public.campaigns (id) on delete cascade,
+  owner_id uuid not null references auth.users (id) on delete cascade,
+  base_character_id uuid references public.characters (id) on delete set null,
+  name text not null default '',
+  avatar_url text,
+  data jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.table_characters enable row level security;
+
+-- O controlador tem acesso total à sua instância.
+drop policy if exists tchar_owner_all on public.table_characters;
+create policy tchar_owner_all on public.table_characters
+  for all to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+-- O mestre/gerente da mesa lê e ajusta as instâncias da mesa dele.
+drop policy if exists tchar_master_all on public.table_characters;
+create policy tchar_master_all on public.table_characters
+  for all to authenticated
+  using (public.can_manage_table(table_id)) with check (public.can_manage_table(table_id));
+-- Jogadores NÃO veem as instâncias uns dos outros (sem política de leitura ampla).
+
+create index if not exists tchar_table_idx on public.table_characters (table_id);
+
+-- 7) CHARACTER_GRANTS: dono compartilha o controle de uma ficha base ---------
+create table if not exists public.character_grants (
+  id uuid primary key default gen_random_uuid(),
+  character_id uuid not null references public.characters (id) on delete cascade,
+  owner_id uuid not null references auth.users (id) on delete cascade,
+  grantee_id uuid not null references auth.users (id) on delete cascade,
+  permission text not null default 'use' check (permission in ('view', 'use', 'edit')),
+  created_at timestamptz not null default now(),
+  unique (character_id, grantee_id)
+);
+alter table public.character_grants enable row level security;
+
+create or replace function public.has_character_grant(cid uuid, uid uuid, minperm text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.character_grants g
+    where g.character_id = cid and g.grantee_id = uid
+      and (
+        minperm = 'view'
+        or (minperm = 'use' and g.permission in ('use', 'edit'))
+        or (minperm = 'edit' and g.permission = 'edit')
+      )
+  );
+$$;
+
+drop policy if exists grants_owner on public.character_grants;
+create policy grants_owner on public.character_grants
+  for all to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+drop policy if exists grants_grantee_read on public.character_grants;
+create policy grants_grantee_read on public.character_grants
+  for select to authenticated using (grantee_id = auth.uid());
+
+-- 8) PRIVACIDADE: fichas base deixam de vazar entre jogadores -----------------
+-- ANTES: qualquer membro da mesa lia a ficha base de qualquer outro. AGORA a
+-- ficha base é privada: dono + pública + quem recebeu permissão explícita.
+-- O mestre vê as fichas dos jogadores da mesa via public.table_characters.
+drop policy if exists characters_member_read on public.characters;
+drop policy if exists characters_granted_read on public.characters;
+create policy characters_granted_read on public.characters
+  for select to authenticated using (public.has_character_grant(id, auth.uid(), 'view'));

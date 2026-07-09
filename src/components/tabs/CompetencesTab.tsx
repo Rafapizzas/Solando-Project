@@ -21,10 +21,10 @@ interface TabProps {
 export function CompetencesTab({ character, patch }: TabProps) {
   const available = competencePoints(character);
   const spent = competencePointsSpent(character);
-  const left = available - spent;
   const capBonus = competenceCap(character.level);
   const capLevel = capBonus / 10;
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
 
   function setLevel(id: string, level: number) {
     const clamped = Math.max(0, Math.min(capLevel, level));
@@ -55,7 +55,10 @@ export function CompetencesTab({ character, patch }: TabProps) {
         <p className="mb-3 text-xs text-zinc-500">
           3 pontos iniciais + 1 a cada 10 de Mente ou Destreza. Cada nível dá{" "}
           <b className="text-alma-soft">+10 no dado</b>. Teto no seu nível: NVL {capLevel} (
-          +{capBonus}).
+          +{capBonus}).{" "}
+          {spent > available && (
+            <b className="text-amber-300">Você passou do sugerido (dica, sem trava).</b>
+          )}
         </p>
 
         <div className="space-y-2">
@@ -81,7 +84,7 @@ export function CompetencesTab({ character, patch }: TabProps) {
                 <button
                   className="btn-ghost !px-3 !py-1.5"
                   onClick={() => setLevel(c.id, c.level + 1)}
-                  disabled={c.level >= capLevel || left <= 0}
+                  disabled={c.level >= capLevel}
                 >
                   +
                 </button>
@@ -99,22 +102,40 @@ export function CompetencesTab({ character, patch }: TabProps) {
       </div>
 
       {open && (
-        <div className="card grid gap-2 p-5 sm:grid-cols-2">
-          {COMPETENCES.filter((c) => !character.competences.some((e) => e.id === c.id)).map(
-            (c) => (
-              <button
-                key={c.id}
-                onClick={() => setLevel(c.id, 1)}
-                disabled={left <= 0}
-                className={`rounded-xl border border-white/10 bg-void-950/40 p-3 text-left transition hover:border-alma/50 ${
-                  left <= 0 ? "opacity-40" : ""
-                }`}
-              >
-                <div className="text-sm font-semibold text-alma-soft">{c.name}</div>
-                <p className="text-xs text-zinc-400">{c.description}</p>
-              </button>
-            ),
-          )}
+        <div className="card space-y-3 p-5">
+          <label className="relative block">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
+              🔍
+            </span>
+            <input
+              className="input pl-9"
+              placeholder="Buscar competência…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {COMPETENCES.filter((c) => !character.competences.some((e) => e.id === c.id))
+              .filter((c) => {
+                const q = query.trim().toLowerCase();
+                return (
+                  !q ||
+                  c.name.toLowerCase().includes(q) ||
+                  c.description.toLowerCase().includes(q)
+                );
+              })
+              .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+              .map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => setLevel(c.id, 1)}
+                  className="rounded-xl border border-white/10 bg-void-950/40 p-3 text-left transition hover:border-alma/50"
+                >
+                  <div className="text-sm font-semibold text-alma-soft">{c.name}</div>
+                  <p className="text-xs text-zinc-400">{c.description}</p>
+                </button>
+              ))}
+          </div>
         </div>
       )}
     </div>

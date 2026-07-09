@@ -32,6 +32,7 @@ const KI_BUCKETS: Array<{ key: keyof EntropyAllocation; label: string; hint: str
 
 export function ConditionsTab({ character, patch }: TabProps) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const raw = conditionPointsRaw(character);
   const ki = conditionKi(character);
   const kiTotal = entropyKiTotal(character);
@@ -39,7 +40,8 @@ export function ConditionsTab({ character, patch }: TabProps) {
   const alloc = character.entropyAlloc ?? emptyEntropyAlloc();
 
   function setAlloc(key: keyof EntropyAllocation, delta: number) {
-    if (delta > 0 && kiRestante <= 0) return;
+    // Sem trava: permite passar do total de KI; o contador vira dica (fica
+    // vermelho quando negativo), mas nunca impede a alocação.
     const cur = alloc[key] ?? 0;
     const next = Math.max(0, cur + delta);
     patch({ entropyAlloc: { ...emptyEntropyAlloc(), ...alloc, [key]: next } });
@@ -52,6 +54,15 @@ export function ConditionsTab({ character, patch }: TabProps) {
       name: def.name,
       points: def.min,
       note: def.description,
+    };
+    patch({ conditions: [...character.conditions, c] });
+  }
+  function addManual() {
+    const c: Condition = {
+      id: uid("cond"),
+      name: "Nova condição",
+      points: 1,
+      note: "",
     };
     patch({ conditions: [...character.conditions, c] });
   }
@@ -85,6 +96,8 @@ export function ConditionsTab({ character, patch }: TabProps) {
             const def = c.catalogId
               ? CONDITIONS_CATALOG.find((d) => d.id === c.catalogId)
               : undefined;
+            const min = def?.min ?? 1;
+            const max = def?.max ?? MAX_CONDITION_POINTS;
             return (
               <div
                 key={c.id}
@@ -98,18 +111,19 @@ export function ConditionsTab({ character, patch }: TabProps) {
                   />
                   <div className="flex items-center gap-1">
                     <span className="text-xs text-zinc-500">pts</span>
-                    <input
-                      type="number"
-                      min={def?.min ?? 1}
-                      max={def?.max ?? 5}
-                      className="input w-16 text-center"
-                      value={c.points}
-                      onChange={(e) =>
-                        update(c.id, {
-                          points: Math.max(1, Math.min(5, Number(e.target.value) || 1)),
-                        })
-                      }
-                    />
+                    <button
+                      className="btn-ghost !px-2.5 !py-1.5"
+                      onClick={() => update(c.id, { points: Math.max(min, c.points - 1) })}
+                    >
+                      −
+                    </button>
+                    <span className="w-8 text-center font-bold text-sol-soft">{c.points}</span>
+                    <button
+                      className="btn-ghost !px-2.5 !py-1.5"
+                      onClick={() => update(c.id, { points: Math.min(max, c.points + 1) })}
+                    >
+                      +
+                    </button>
                   </div>
                   <button
                     className="btn-ghost !px-3 !py-2 text-red-400"
@@ -127,9 +141,14 @@ export function ConditionsTab({ character, patch }: TabProps) {
           )}
         </div>
 
-        <button className="btn-primary mt-3 w-full" onClick={() => setOpen((v) => !v)}>
-          {open ? "Fechar catálogo" : "⚖️ Escolher condições do catálogo"}
-        </button>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button className="btn-primary flex-1" onClick={() => setOpen((v) => !v)}>
+            {open ? "Fechar catálogo" : "⚖️ Escolher condições do catálogo"}
+          </button>
+          <button className="btn-ghost" onClick={addManual}>
+            + Manual
+          </button>
+        </div>
       </div>
 
       {/* Alocação de Entropia-KI */}
@@ -169,7 +188,6 @@ export function ConditionsTab({ character, patch }: TabProps) {
                   <button
                     className="btn-sol !px-3 !py-1.5"
                     onClick={() => setAlloc(b.key, +1)}
-                    disabled={kiRestante <= 0}
                   >
                     +
                   </button>
@@ -181,22 +199,45 @@ export function ConditionsTab({ character, patch }: TabProps) {
       </div>
 
       {open && (
-        <div className="card grid gap-2 p-5 sm:grid-cols-2">
-          {CONDITIONS_CATALOG.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => add(c)}
-              className="rounded-xl border border-white/10 bg-void-950/40 p-3 text-left transition hover:border-sol/50"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-zinc-100">{c.name}</span>
-                <span className="chip text-[10px] text-sol-soft">
-                  {c.min === c.max ? c.min : `${c.min}–${c.max}`} pt
-                </span>
-              </div>
-              <p className="text-xs text-zinc-400">{c.description}</p>
-            </button>
-          ))}
+        <div className="card space-y-3 p-5">
+          <label className="relative block">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
+              🔍
+            </span>
+            <input
+              className="input pl-9"
+              placeholder="Buscar condição…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {CONDITIONS_CATALOG.filter((c) => {
+              const q = query.trim().toLowerCase();
+              return (
+                !q ||
+                c.name.toLowerCase().includes(q) ||
+                c.description.toLowerCase().includes(q)
+              );
+            })
+              .slice()
+              .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+              .map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => add(c)}
+                  className="rounded-xl border border-white/10 bg-void-950/40 p-3 text-left transition hover:border-sol/50"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-zinc-100">{c.name}</span>
+                    <span className="chip text-[10px] text-sol-soft">
+                      {c.min === c.max ? c.min : `${c.min}–${c.max}`} pt
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-400">{c.description}</p>
+                </button>
+              ))}
+          </div>
         </div>
       )}
     </div>

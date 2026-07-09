@@ -55,27 +55,22 @@ const STEPS: Step[] = [
   },
   {
     n: 2,
-    title: "Escolha seu perfil",
-    desc: "Como na Netflix, você escolhe um perfil. Crie um de “Jogador” para jogar e um de “Mestre” para comandar mesas. Dá para trocar quando quiser.",
-    href: "/perfis",
-    cta: "Gerenciar perfis",
+    title: "Ajuste sua conta e amigos",
+    desc: "Em “Editar conta” você define seu nome, foto e código de amigo. Use o código para adicionar pessoas em “Amigos” e ver quem está online. Você pode ser mestre ou jogador em cada mesa — sem trocar de perfil.",
+    href: "/conta",
+    cta: "Editar conta",
     mock: (
       <Frame tint="#facc15">
-        <div className="flex justify-center gap-4">
-          {[
-            { e: "🎭", n: "Jogador", c: "#a855f7" },
-            { e: "👑", n: "Mestre", c: "#facc15" },
-          ].map((p) => (
-            <div key={p.n} className="flex flex-col items-center gap-1">
-              <div
-                className="grid h-14 w-14 place-items-center rounded-xl text-2xl"
-                style={{ background: p.c }}
-              >
-                {p.e}
-              </div>
-              <span className="text-xs text-zinc-300">{p.n}</span>
+        <div className="flex items-center justify-center gap-4">
+          <div className="grid h-14 w-14 place-items-center rounded-full bg-mente/30 text-2xl">
+            🧙
+          </div>
+          <div className="space-y-1">
+            <div className="h-4 w-24 rounded bg-white/15" />
+            <div className="rounded bg-sol/20 px-2 py-0.5 text-center font-mono text-xs tracking-widest text-sol-soft">
+              A1B2C3D4
             </div>
-          ))}
+          </div>
         </div>
       </Frame>
     ),

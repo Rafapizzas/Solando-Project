@@ -10,8 +10,10 @@ import {
 import {
   Attributes,
   Character,
+  attributeBonus,
   clampAttribute,
   raceClassAttrBonus,
+  talentAttrBonus,
   remainingAttributePoints,
 } from "@/lib/solando/character";
 import { gamblerLuck, rollLuck } from "@/lib/solando/dice";
@@ -37,7 +39,9 @@ const spectrumBar: Record<string, string> = {
 export function AttributeAllocator({ character, onChange }: Props) {
   const remaining = remainingAttributePoints(character);
   const total = totalAttributePoints(character);
-  const bonus = raceClassAttrBonus(character);
+  const bonus = attributeBonus(character);
+  const rcBonus = raceClassAttrBonus(character);
+  const talBonus = talentAttrBonus(character);
   const totalBonus = Object.values(bonus).reduce((s, v) => s + (v || 0), 0);
   // A Sorte é rolada UMA única vez (dado normal OU Homem Apostador).
   const luckLocked = character.luckRoll > 0;
@@ -49,7 +53,8 @@ export function AttributeAllocator({ character, onChange }: Props) {
 
   function bump(key: AttributeKey, delta: number) {
     const current = character.attributes[key];
-    if (delta > 0 && remaining <= 0) return; // sem pontos
+    // Sem travas: pode passar do orçamento; o contador vira uma DICA (fica
+    // vermelho e avisa quando negativo), mas nunca impede a distribuição.
     setAttr(key, current + delta);
   }
 
@@ -99,6 +104,21 @@ export function AttributeAllocator({ character, onChange }: Props) {
         </div>
       </div>
 
+      {remaining < 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="card flex items-center gap-3 border-amber-500/30 bg-amber-500/5 p-3 text-sm"
+        >
+          <span className="text-xl">💡</span>
+          <p className="text-zinc-300">
+            Você está <b className="text-amber-300">{Math.abs(remaining)} ponto(s) acima</b> do
+            sugerido. Sem problema — não há trava; é só uma dica de balanceamento. Combine com o
+            Mestre se a build passar do esperado.
+          </p>
+        </motion.div>
+      )}
+
       {totalBonus > 0 && (
         <motion.div
           initial={{ opacity: 0, y: -6 }}
@@ -107,9 +127,10 @@ export function AttributeAllocator({ character, onChange }: Props) {
         >
           <span className="text-xl">🧬</span>
           <p className="text-zinc-300">
-            <b className="text-emerald-400">+{totalBonus} de atributo</b> vindo de raça/classe,
-            somados por cima dos pontos livres. Lembre-se: essas vantagens vêm com as
-            <b className="text-red-400"> fraquezas</b> da raça (equilíbrio narrativo).
+            <b className="text-emerald-400">+{totalBonus} de atributo</b> vindo de
+            raça/classe/talento, somados por cima dos pontos livres. Lembre-se: essas vantagens
+            vêm com as <b className="text-red-400">fraquezas</b> correspondentes (equilíbrio
+            narrativo).
           </p>
         </motion.div>
       )}
@@ -119,6 +140,14 @@ export function AttributeAllocator({ character, onChange }: Props) {
         {ATTRIBUTES.map((def) => {
           const base = character.attributes[def.key];
           const attrBonus = bonus[def.key] ?? 0;
+          const rcPart = rcBonus[def.key] ?? 0;
+          const talPart = talBonus[def.key] ?? 0;
+          const bonusSources = [
+            rcPart > 0 ? `+${rcPart} raça/classe` : "",
+            talPart > 0 ? `+${talPart} talento` : "",
+          ]
+            .filter(Boolean)
+            .join(" · ");
           const value = base + attrBonus;
           const rank = rankFor(value);
           const isLuck = def.key === "sorte";
@@ -154,10 +183,10 @@ export function AttributeAllocator({ character, onChange }: Props) {
                     </span>
                     {attrBonus > 0 && (
                       <span
-                        title={`Base ${base} + ${attrBonus} de raça/classe = ${value} efetivo`}
+                        title={`Base ${base} + ${attrBonus} (${bonusSources}) = ${value} efetivo`}
                         className="inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300 animate-glowRing"
                       >
-                        🧬 +{attrBonus} raça/classe
+                        🧬 +{attrBonus} {bonusSources.includes("talento") ? "bônus" : "raça/classe"}
                       </span>
                     )}
                   </div>

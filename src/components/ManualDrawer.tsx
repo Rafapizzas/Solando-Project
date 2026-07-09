@@ -32,7 +32,7 @@ export function ManualDrawer() {
               onClick={() => setOpen(false)}
             />
             <motion.aside
-              className="fixed right-0 top-0 z-50 h-full w-full max-w-2xl overflow-y-auto border-l border-white/10 bg-void-950 p-5 shadow-2xl"
+              className="fixed right-0 top-0 z-50 h-full w-full max-w-4xl overflow-y-auto border-l border-white/10 bg-void-950 p-5 shadow-2xl"
               initial={{ x: "100%" }}
               animate={{ x: 0 }}
               exit={{ x: "100%" }}

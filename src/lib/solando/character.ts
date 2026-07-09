@@ -224,9 +224,61 @@ export function raceClassAttrBonus(character: Character): Attributes {
   return bonus;
 }
 
-/** Atributos efetivos = base (pontos gastos) + bônus fixos de raça/classe. */
+/** Normaliza nome de atributo em PT (minúsculo, sem acento) para casar chaves. */
+function normalizeAttrName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+/** Nomes de atributo (PT normalizado) → chave interna. */
+const ATTR_NAME_TO_KEY: Record<string, AttributeKey> = {
+  forca: "forca",
+  destreza: "destreza",
+  constituicao: "constituicao",
+  aspecto: "aspecto",
+  mente: "mente",
+  poder: "poder",
+  sorte: "sorte",
+};
+
+/**
+ * Bônus de atributo concedido por TALENTOS selecionados. Só considera talentos
+ * cujo efeito é um bônus PERMANENTE no formato "+N de <Atributo>." (ex.: Arrojado
+ * → Aspecto, Super Força → Força). Efeitos temporários/condicionais (que gastam
+ * Entropia, duram "por 1 turno" ou são de dano/dado) NÃO entram no cálculo.
+ */
+export function talentAttrBonus(character: Character): Attributes {
+  const bonus = emptyAttributes();
+  for (const t of character.talents ?? []) {
+    const effect = (t.description ?? "").trim();
+    // Ignora efeitos temporários/condicionais (não somam atributo permanente).
+    if (/entropia|turno|de dano|no dado/i.test(effect)) continue;
+    // Casa apenas "+N de <Atributo>" como efeito único e permanente.
+    const m = effect.match(/^\+(\d+)\s+de\s+([A-Za-zÀ-ú]+)\.?$/);
+    if (!m) continue;
+    const key = ATTR_NAME_TO_KEY[normalizeAttrName(m[2])];
+    if (!key) continue;
+    bonus[key] += Number(m[1]);
+  }
+  return bonus;
+}
+
+/** Todos os bônus de atributo FIXOS: raça + classe + talentos. */
+export function attributeBonus(character: Character): Attributes {
+  const rc = raceClassAttrBonus(character);
+  const tb = talentAttrBonus(character);
+  const bonus = emptyAttributes();
+  for (const key of ATTRIBUTE_KEYS) {
+    bonus[key] = rc[key] + tb[key];
+  }
+  return bonus;
+}
+
+/** Atributos efetivos = base (pontos gastos) + bônus fixos de raça/classe/talento. */
 export function effectiveAttributes(character: Character): Attributes {
-  const bonus = raceClassAttrBonus(character);
+  const bonus = attributeBonus(character);
   const eff = emptyAttributes();
   for (const key of ATTRIBUTE_KEYS) {
     eff[key] = (character.attributes?.[key] ?? 0) + bonus[key];

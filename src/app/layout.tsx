@@ -5,11 +5,10 @@ import { NavBar } from "@/components/NavBar";
 import { AuroraBackground } from "@/components/AuroraBackground";
 import { DevSignature } from "@/components/DevSignature";
 import { OpeningSplash } from "@/components/OpeningSplash";
-import { ProfileGate } from "@/components/ProfileGate";
 import { KonamiEasterEgg } from "@/components/KonamiEasterEgg";
 import { FeedbackWidget } from "@/components/FeedbackWidget";
 import { AuthProvider } from "@/lib/auth";
-import { ProfileProvider } from "@/lib/profiles";
+import { PresenceProvider } from "@/lib/presence";
 import { RollFxProvider } from "@/lib/rollFx";
 
 const display = Cinzel({
@@ -48,11 +47,10 @@ export default function RootLayout({
     >
       <body>
         <AuthProvider>
-          <ProfileProvider>
+          <PresenceProvider>
             <RollFxProvider>
               <AuroraBackground />
               <OpeningSplash />
-              <ProfileGate />
               <KonamiEasterEgg />
               <FeedbackWidget />
               <div className="flex min-h-screen flex-col">
@@ -63,7 +61,7 @@ export default function RootLayout({
                 <DevSignature />
               </div>
             </RollFxProvider>
-          </ProfileProvider>
+          </PresenceProvider>
         </AuthProvider>
       </body>
     </html>
