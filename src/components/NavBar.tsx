@@ -26,6 +26,7 @@ export function NavBar() {
   // Qualquer conta pode mestrar: o papel de mestre é por mesa (dono da mesa).
   if (isAuthenticated) {
     links.splice(3, 0, { href: "/mestre", label: "Minhas Mesas" });
+    links.splice(4, 0, { href: "/npcs", label: "NPCs" });
     links.push({ href: "/amigos", label: "Amigos" });
   }
 

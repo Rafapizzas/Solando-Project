@@ -556,3 +556,141 @@ drop policy if exists characters_member_read on public.characters;
 drop policy if exists characters_granted_read on public.characters;
 create policy characters_granted_read on public.characters
   for select to authenticated using (public.has_character_grant(id, auth.uid(), 'view'));
+
+-- ============================================================================
+-- BIG UPDATE 2026-07 (parte 2) — Menu do Mestre (NPCs) + Player de Música.
+-- NPCs: biblioteca privada do mestre (reutilizável entre mesas), com opção de
+-- tornar público. Ao colocar um NPC na mesa, os jogadores veem apenas um CARD
+-- (nome + imagem) — NUNCA a história/objetivo/status. Cada jogador tem suas
+-- próprias anotações no card. Música: estado de reprodução sincronizado por
+-- mesa (YouTube), controlado pelo mestre. Idempotente.
+-- ============================================================================
+
+-- 9) NPCS: biblioteca do mestre (reutilizável entre mesas) --------------------
+create table if not exists public.npcs (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users (id) on delete cascade,
+  name text not null default '',
+  image_url text,
+  lore text not null default '',        -- história / background (privado do mestre)
+  objective text not null default '',   -- objetivo do NPC (privado)
+  location text not null default '',    -- localização (privado)
+  hostile boolean not null default false,
+  is_generic boolean not null default false, -- capanga/figurante reutilizável
+  is_public boolean not null default false,  -- compartilhado com a comunidade
+  data jsonb not null default '{}'::jsonb,   -- atributos/status opcionais (privado)
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.npcs enable row level security;
+
+-- O dono (mestre) gerencia seus NPCs por completo.
+drop policy if exists npcs_owner on public.npcs;
+create policy npcs_owner on public.npcs
+  for all to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+-- NPCs públicos são visíveis (como referência) a todos os autenticados.
+drop policy if exists npcs_public_read on public.npcs;
+create policy npcs_public_read on public.npcs
+  for select to authenticated using (is_public = true);
+
+create index if not exists npcs_owner_idx on public.npcs (owner_id);
+create index if not exists npcs_public_idx on public.npcs (is_public) where is_public = true;
+
+-- 10) TABLE_NPCS: NPC colocado numa mesa (card visível aos jogadores) ---------
+-- Guarda um SNAPSHOT só do que os jogadores podem ver (nome + imagem). Assim a
+-- história/objetivo/status ficam na tabela `npcs` (privada do dono) e nunca
+-- vazam para os jogadores, mesmo que a linha da mesa seja legível a todos.
+create table if not exists public.table_npcs (
+  id uuid primary key default gen_random_uuid(),
+  table_id uuid not null references public.campaigns (id) on delete cascade,
+  npc_id uuid references public.npcs (id) on delete set null,
+  added_by uuid not null references auth.users (id) on delete cascade,
+  display_name text not null default '',
+  image_url text,
+  hostile boolean not null default false, -- só indica cor do card; não revela status
+  created_at timestamptz not null default now()
+);
+alter table public.table_npcs enable row level security;
+
+-- O mestre/gerente da mesa coloca e remove NPCs.
+drop policy if exists tnpc_manage on public.table_npcs;
+create policy tnpc_manage on public.table_npcs
+  for all to authenticated
+  using (public.can_manage_table(table_id)) with check (public.can_manage_table(table_id));
+-- Membros da mesa leem os cards (só o snapshot: nome + imagem).
+drop policy if exists tnpc_member_read on public.table_npcs;
+create policy tnpc_member_read on public.table_npcs
+  for select to authenticated using (public.is_table_member(table_id));
+
+create index if not exists tnpc_table_idx on public.table_npcs (table_id);
+
+-- 11) NPC_NOTES: anotações do jogador sobre um NPC (privadas por jogador) -----
+create table if not exists public.npc_notes (
+  id uuid primary key default gen_random_uuid(),
+  table_npc_id uuid not null references public.table_npcs (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  content text not null default '',
+  updated_at timestamptz not null default now(),
+  unique (table_npc_id, user_id)
+);
+alter table public.npc_notes enable row level security;
+
+-- Cada usuário só vê/edita as SUAS anotações.
+drop policy if exists npc_notes_self on public.npc_notes;
+create policy npc_notes_self on public.npc_notes
+  for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+create index if not exists npc_notes_tnpc_idx on public.npc_notes (table_npc_id);
+
+-- 12) TABLE_MUSIC: estado de reprodução sincronizado por mesa -----------------
+-- O mestre controla; os jogadores acompanham via realtime (YouTube sincronizado).
+create table if not exists public.table_music (
+  table_id uuid primary key references public.campaigns (id) on delete cascade,
+  provider text not null default 'youtube' check (provider in ('youtube', 'spotify')),
+  url text,
+  video_id text,
+  title text not null default '',
+  is_playing boolean not null default false,
+  position_seconds double precision not null default 0,
+  updated_by uuid references auth.users (id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+alter table public.table_music enable row level security;
+
+-- Membros leem o estado; só o mestre/gerente controla.
+drop policy if exists music_read on public.table_music;
+create policy music_read on public.table_music
+  for select to authenticated using (public.is_table_member(table_id));
+drop policy if exists music_manage on public.table_music;
+create policy music_manage on public.table_music
+  for all to authenticated
+  using (public.can_manage_table(table_id)) with check (public.can_manage_table(table_id));
+
+-- 13) MUSIC_TRACKS: playlist da mesa -----------------------------------------
+create table if not exists public.music_tracks (
+  id uuid primary key default gen_random_uuid(),
+  table_id uuid not null references public.campaigns (id) on delete cascade,
+  provider text not null default 'youtube' check (provider in ('youtube', 'spotify')),
+  url text not null,
+  video_id text,
+  title text not null default '',
+  position int not null default 0,
+  added_by uuid not null references auth.users (id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+alter table public.music_tracks enable row level security;
+
+drop policy if exists tracks_read on public.music_tracks;
+create policy tracks_read on public.music_tracks
+  for select to authenticated using (public.is_table_member(table_id));
+drop policy if exists tracks_manage on public.music_tracks;
+create policy tracks_manage on public.music_tracks
+  for all to authenticated
+  using (public.can_manage_table(table_id)) with check (public.can_manage_table(table_id));
+
+create index if not exists tracks_table_idx on public.music_tracks (table_id, position);
+
+-- Realtime: cards de NPC e player de música ao vivo.
+alter publication supabase_realtime add table public.table_npcs;
+alter publication supabase_realtime add table public.table_music;
+alter publication supabase_realtime add table public.music_tracks;

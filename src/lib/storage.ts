@@ -561,6 +561,11 @@ export const tableRepo = {
         { event: "*", schema: "public", table: "table_members", filter: `table_id=eq.${tableId}` },
         onChange,
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "table_npcs", filter: `table_id=eq.${tableId}` },
+        onChange,
+      )
       .subscribe();
     return () => {
       client.removeChannel(channel);
@@ -1249,6 +1254,520 @@ export const grantsRepo = {
       .in("id", ids);
     if (cErr) throw cErr;
     return (chars ?? []).map(rowToCharacter);
+  },
+};
+
+// --- NPCs (biblioteca do mestre) --------------------------------------------
+
+/** Extrai o ID do vídeo de uma URL do YouTube (ou retorna null). */
+export function youtubeVideoId(url: string): string | null {
+  const s = url.trim();
+  if (!s) return null;
+  // ID puro (11 chars)
+  if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s;
+  try {
+    const u = new URL(s);
+    const host = u.hostname.replace(/^www\./, "");
+    if (host === "youtu.be") return u.pathname.slice(1, 12) || null;
+    if (host.endsWith("youtube.com")) {
+      if (u.pathname === "/watch") return u.searchParams.get("v");
+      const m = u.pathname.match(/\/(embed|shorts|v)\/([a-zA-Z0-9_-]{11})/);
+      if (m) return m[2];
+    }
+  } catch {
+    /* url inválida */
+  }
+  return null;
+}
+
+/** Extrai o ID de faixa/álbum/playlist do Spotify para o player embed. */
+export function spotifyEmbed(url: string): { kind: string; id: string } | null {
+  const s = url.trim();
+  if (!s) return null;
+  try {
+    const u = new URL(s);
+    if (!u.hostname.replace(/^www\./, "").endsWith("spotify.com")) return null;
+    const m = u.pathname.match(/\/(track|album|playlist|episode|show)\/([a-zA-Z0-9]+)/);
+    if (m) return { kind: m[1], id: m[2] };
+  } catch {
+    /* url inválida */
+  }
+  return null;
+}
+
+export interface Npc {
+  id: string;
+  ownerId: string;
+  name: string;
+  imageUrl?: string;
+  lore: string;
+  objective: string;
+  location: string;
+  hostile: boolean;
+  isGeneric: boolean;
+  isPublic: boolean;
+  data: Record<string, unknown>;
+  authorName?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface NpcRow {
+  id: string;
+  owner_id: string;
+  name: string | null;
+  image_url: string | null;
+  lore: string | null;
+  objective: string | null;
+  location: string | null;
+  hostile: boolean;
+  is_generic: boolean;
+  is_public: boolean;
+  data: unknown;
+  created_at: string;
+  updated_at: string;
+}
+
+function rowToNpc(row: NpcRow): Npc {
+  return {
+    id: row.id,
+    ownerId: row.owner_id,
+    name: row.name ?? "",
+    imageUrl: row.image_url ?? undefined,
+    lore: row.lore ?? "",
+    objective: row.objective ?? "",
+    location: row.location ?? "",
+    hostile: !!row.hostile,
+    isGeneric: !!row.is_generic,
+    isPublic: !!row.is_public,
+    data: (row.data && typeof row.data === "object" ? row.data : {}) as Record<string, unknown>,
+    createdAt: new Date(row.created_at).getTime(),
+    updatedAt: new Date(row.updated_at).getTime(),
+  };
+}
+
+const NPC_COLS =
+  "id, owner_id, name, image_url, lore, objective, location, hostile, is_generic, is_public, data, created_at, updated_at";
+
+export type NpcInput = Partial<
+  Pick<
+    Npc,
+    | "name"
+    | "imageUrl"
+    | "lore"
+    | "objective"
+    | "location"
+    | "hostile"
+    | "isGeneric"
+    | "isPublic"
+    | "data"
+  >
+>;
+
+function npcInputToRow(patch: NpcInput): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  if (patch.name !== undefined) row.name = patch.name;
+  if (patch.imageUrl !== undefined) row.image_url = patch.imageUrl ?? null;
+  if (patch.lore !== undefined) row.lore = patch.lore;
+  if (patch.objective !== undefined) row.objective = patch.objective;
+  if (patch.location !== undefined) row.location = patch.location;
+  if (patch.hostile !== undefined) row.hostile = patch.hostile;
+  if (patch.isGeneric !== undefined) row.is_generic = patch.isGeneric;
+  if (patch.isPublic !== undefined) row.is_public = patch.isPublic;
+  if (patch.data !== undefined) row.data = patch.data;
+  return row;
+}
+
+export const npcRepo = {
+  /** Biblioteca de NPCs do mestre autenticado. */
+  async list(): Promise<Npc[]> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) return [];
+    const { data, error } = await supabase
+      .from("npcs")
+      .select(NPC_COLS)
+      .eq("owner_id", uidUser)
+      .order("updated_at", { ascending: false });
+    if (error) throw error;
+    return ((data ?? []) as NpcRow[]).map(rowToNpc);
+  },
+
+  async get(id: string): Promise<Npc | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase.from("npcs").select(NPC_COLS).eq("id", id).maybeSingle();
+    if (error) throw error;
+    return data ? rowToNpc(data as NpcRow) : null;
+  },
+
+  async create(patch: NpcInput): Promise<Npc> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) throw new Error("Entre na sua conta para criar NPCs.");
+    const { data, error } = await supabase
+      .from("npcs")
+      .insert({ owner_id: uidUser, ...npcInputToRow(patch) })
+      .select(NPC_COLS)
+      .single();
+    if (error) throw error;
+    return rowToNpc(data as NpcRow);
+  },
+
+  async update(id: string, patch: NpcInput): Promise<Npc> {
+    if (!supabase) throw new Error("Indisponível offline.");
+    const { data, error } = await supabase
+      .from("npcs")
+      .update({ ...npcInputToRow(patch), updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .select(NPC_COLS)
+      .single();
+    if (error) throw error;
+    return rowToNpc(data as NpcRow);
+  },
+
+  async setPublic(id: string, value: boolean): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase.from("npcs").update({ is_public: value }).eq("id", id);
+    if (error) throw error;
+  },
+
+  async remove(id: string): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase.from("npcs").delete().eq("id", id);
+    if (error) throw error;
+  },
+
+  /** NPCs públicos da comunidade (exclui os do próprio usuário). */
+  async publicList(): Promise<Npc[]> {
+    if (!supabase) return [];
+    const uidUser = await currentUserId();
+    const { data, error } = await supabase
+      .from("npcs")
+      .select(NPC_COLS)
+      .eq("is_public", true)
+      .order("updated_at", { ascending: false })
+      .limit(60);
+    if (error) throw error;
+    const rows = ((data ?? []) as NpcRow[]).filter((r) => r.owner_id !== uidUser);
+    const authors = await hydrateUsers(rows.map((r) => r.owner_id));
+    return rows.map((r) => ({ ...rowToNpc(r), authorName: authors.get(r.owner_id)?.displayName }));
+  },
+
+  /** Importa um NPC público para a biblioteca do usuário (cria uma cópia). */
+  async importPublic(source: Npc): Promise<Npc> {
+    return npcRepo.create({
+      name: source.name,
+      imageUrl: source.imageUrl,
+      lore: source.lore,
+      objective: source.objective,
+      location: source.location,
+      hostile: source.hostile,
+      isGeneric: source.isGeneric,
+      isPublic: false,
+      data: source.data,
+    });
+  },
+};
+
+/** Envia a imagem de um NPC para o bucket `avatars` (uid/npc-<id>.<ext>). */
+export async function uploadNpcImage(npcId: string, file: File): Promise<string> {
+  const uidUser = await currentUserId();
+  if (!uidUser || !supabase) throw new Error("Entre na sua conta para enviar imagens.");
+  if (!file.type.startsWith("image/")) throw new Error("Selecione um arquivo de imagem.");
+  if (file.size > 5 * 1024 * 1024) throw new Error("Imagem muito grande (máx. 5 MB).");
+  const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const path = `${uidUser}/npc-${npcId}.${ext || "png"}`;
+  const { error } = await supabase.storage.from("avatars").upload(path, file, {
+    upsert: true,
+    cacheControl: "3600",
+    contentType: file.type || undefined,
+  });
+  if (error) throw error;
+  const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+  return `${data.publicUrl}?v=${Date.now()}`;
+}
+
+// --- NPCs na mesa (cards visíveis aos jogadores) ----------------------------
+
+export interface TableNpc {
+  id: string;
+  tableId: string;
+  npcId: string | null;
+  displayName: string;
+  imageUrl?: string;
+  hostile: boolean;
+  createdAt: number;
+}
+
+interface TableNpcRow {
+  id: string;
+  table_id: string;
+  npc_id: string | null;
+  display_name: string | null;
+  image_url: string | null;
+  hostile: boolean;
+  created_at: string;
+}
+
+function rowToTableNpc(row: TableNpcRow): TableNpc {
+  return {
+    id: row.id,
+    tableId: row.table_id,
+    npcId: row.npc_id,
+    displayName: row.display_name ?? "",
+    imageUrl: row.image_url ?? undefined,
+    hostile: !!row.hostile,
+    createdAt: new Date(row.created_at).getTime(),
+  };
+}
+
+export const tableNpcRepo = {
+  /** Cards de NPC visíveis na mesa (snapshot: nome + imagem). */
+  async list(tableId: string): Promise<TableNpc[]> {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from("table_npcs")
+      .select("id, table_id, npc_id, display_name, image_url, hostile, created_at")
+      .eq("table_id", tableId)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return ((data ?? []) as TableNpcRow[]).map(rowToTableNpc);
+  },
+
+  /** Coloca um NPC na mesa (só o snapshot público vai para a linha). */
+  async add(tableId: string, npc: Npc): Promise<TableNpc> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) throw new Error("Indisponível offline.");
+    const { data, error } = await supabase
+      .from("table_npcs")
+      .insert({
+        table_id: tableId,
+        npc_id: npc.id,
+        added_by: uidUser,
+        display_name: npc.name,
+        image_url: npc.imageUrl ?? null,
+        hostile: npc.hostile,
+      })
+      .select("id, table_id, npc_id, display_name, image_url, hostile, created_at")
+      .single();
+    if (error) throw error;
+    return rowToTableNpc(data as TableNpcRow);
+  },
+
+  async remove(id: string): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase.from("table_npcs").delete().eq("id", id);
+    if (error) throw error;
+  },
+};
+
+// --- Anotações do jogador sobre um NPC (privadas por jogador) ---------------
+
+export const npcNoteRepo = {
+  /** A anotação do usuário atual para um card de NPC. */
+  async get(tableNpcId: string): Promise<string> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) return "";
+    const { data, error } = await supabase
+      .from("npc_notes")
+      .select("content")
+      .eq("table_npc_id", tableNpcId)
+      .eq("user_id", uidUser)
+      .maybeSingle();
+    if (error) throw error;
+    return data?.content ?? "";
+  },
+
+  async save(tableNpcId: string, content: string): Promise<void> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) return;
+    const { error } = await supabase.from("npc_notes").upsert(
+      {
+        table_npc_id: tableNpcId,
+        user_id: uidUser,
+        content,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "table_npc_id,user_id" },
+    );
+    if (error) throw error;
+  },
+};
+
+// --- Música da mesa (reprodução sincronizada) -------------------------------
+
+export type MusicProvider = "youtube" | "spotify";
+
+export interface MusicState {
+  tableId: string;
+  provider: MusicProvider;
+  url: string | null;
+  videoId: string | null;
+  title: string;
+  isPlaying: boolean;
+  positionSeconds: number;
+  updatedAt: number;
+}
+
+interface MusicRow {
+  table_id: string;
+  provider: MusicProvider;
+  url: string | null;
+  video_id: string | null;
+  title: string | null;
+  is_playing: boolean;
+  position_seconds: number;
+  updated_at: string;
+}
+
+function rowToMusic(row: MusicRow): MusicState {
+  return {
+    tableId: row.table_id,
+    provider: row.provider,
+    url: row.url,
+    videoId: row.video_id,
+    title: row.title ?? "",
+    isPlaying: !!row.is_playing,
+    positionSeconds: row.position_seconds ?? 0,
+    updatedAt: new Date(row.updated_at).getTime(),
+  };
+}
+
+export interface MusicTrack {
+  id: string;
+  tableId: string;
+  provider: MusicProvider;
+  url: string;
+  videoId: string | null;
+  title: string;
+  position: number;
+}
+
+interface MusicTrackRow {
+  id: string;
+  table_id: string;
+  provider: MusicProvider;
+  url: string;
+  video_id: string | null;
+  title: string | null;
+  position: number;
+}
+
+function rowToTrack(row: MusicTrackRow): MusicTrack {
+  return {
+    id: row.id,
+    tableId: row.table_id,
+    provider: row.provider,
+    url: row.url,
+    videoId: row.video_id,
+    title: row.title ?? "",
+    position: row.position,
+  };
+}
+
+export const musicRepo = {
+  /** Estado atual de reprodução da mesa. */
+  async get(tableId: string): Promise<MusicState | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from("table_music")
+      .select("table_id, provider, url, video_id, title, is_playing, position_seconds, updated_at")
+      .eq("table_id", tableId)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? rowToMusic(data as MusicRow) : null;
+  },
+
+  /** Mestre define a faixa/estado (upsert). */
+  async set(
+    tableId: string,
+    patch: {
+      provider?: MusicProvider;
+      url?: string | null;
+      videoId?: string | null;
+      title?: string;
+      isPlaying?: boolean;
+      positionSeconds?: number;
+    },
+  ): Promise<void> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) return;
+    const row: Record<string, unknown> = {
+      table_id: tableId,
+      updated_by: uidUser,
+      updated_at: new Date().toISOString(),
+    };
+    if (patch.provider !== undefined) row.provider = patch.provider;
+    if (patch.url !== undefined) row.url = patch.url;
+    if (patch.videoId !== undefined) row.video_id = patch.videoId;
+    if (patch.title !== undefined) row.title = patch.title;
+    if (patch.isPlaying !== undefined) row.is_playing = patch.isPlaying;
+    if (patch.positionSeconds !== undefined) row.position_seconds = patch.positionSeconds;
+    const { error } = await supabase.from("table_music").upsert(row, { onConflict: "table_id" });
+    if (error) throw error;
+  },
+
+  /** Playlist da mesa. */
+  async tracks(tableId: string): Promise<MusicTrack[]> {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from("music_tracks")
+      .select("id, table_id, provider, url, video_id, title, position")
+      .eq("table_id", tableId)
+      .order("position", { ascending: true });
+    if (error) throw error;
+    return ((data ?? []) as MusicTrackRow[]).map(rowToTrack);
+  },
+
+  async addTrack(
+    tableId: string,
+    track: { provider: MusicProvider; url: string; videoId: string | null; title: string },
+  ): Promise<MusicTrack> {
+    const uidUser = await currentUserId();
+    if (!uidUser || !supabase) throw new Error("Indisponível offline.");
+    const existing = await musicRepo.tracks(tableId);
+    const position = existing.length ? existing[existing.length - 1].position + 1 : 0;
+    const { data, error } = await supabase
+      .from("music_tracks")
+      .insert({
+        table_id: tableId,
+        provider: track.provider,
+        url: track.url,
+        video_id: track.videoId,
+        title: track.title,
+        position,
+        added_by: uidUser,
+      })
+      .select("id, table_id, provider, url, video_id, title, position")
+      .single();
+    if (error) throw error;
+    return rowToTrack(data as MusicTrackRow);
+  },
+
+  async removeTrack(id: string): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase.from("music_tracks").delete().eq("id", id);
+    if (error) throw error;
+  },
+
+  /** Assina o estado de música da mesa (baixa latência para os jogadores). */
+  subscribe(tableId: string, onChange: () => void): () => void {
+    const client = supabase;
+    if (!client) return () => {};
+    const channel = client
+      .channel(`musica:${tableId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "table_music", filter: `table_id=eq.${tableId}` },
+        onChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "music_tracks", filter: `table_id=eq.${tableId}` },
+        onChange,
+      )
+      .subscribe();
+    return () => {
+      client.removeChannel(channel);
+    };
   },
 };
 

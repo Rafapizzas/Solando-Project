@@ -11,6 +11,8 @@ import {
   tableCharacterRepo,
   TableCharacter,
   TableMember,
+  TableNpc,
+  tableNpcRepo,
   RollLog,
 } from "@/lib/storage";
 import { Character } from "@/lib/solando/character";
@@ -20,6 +22,8 @@ import { RollResult, rollAttribute } from "@/lib/solando/dice";
 import { DiceRoller } from "@/components/DiceRoller";
 import { MesaAssistant } from "@/components/MesaAssistant";
 import { MesaInvite } from "@/components/MesaInvite";
+import { TableNpcs } from "@/components/TableNpcs";
+import { MusicPlayer } from "@/components/MusicPlayer";
 import { useAuth } from "@/lib/auth";
 import { usePresence } from "@/lib/presence";
 import { useRollFx } from "@/lib/rollFx";
@@ -35,6 +39,7 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [members, setMembers] = useState<TableMember[]>([]);
   const [tableChars, setTableChars] = useState<TableCharacter[]>([]);
+  const [tableNpcs, setTableNpcs] = useState<TableNpc[]>([]);
   const [myChars, setMyChars] = useState<Character[]>([]);
   const [rolls, setRolls] = useState<RollLog[]>([]);
   const [secretMode, setSecretMode] = useState(false);
@@ -56,16 +61,18 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
   }, [params.id]);
 
   const loadTable = useCallback(async () => {
-    const [c, mems, chars, mine] = await Promise.all([
+    const [c, mems, chars, mine, npcs] = await Promise.all([
       campaignRepo.get(params.id),
       tableRepo.members(params.id),
       tableCharacterRepo.list(params.id),
       characterRepo.list(),
+      tableNpcRepo.list(params.id),
     ]);
     setCampaign(c ?? null);
     setMembers(mems);
     setTableChars(chars);
     setMyChars(mine);
+    setTableNpcs(npcs);
   }, [params.id]);
 
   useEffect(() => {
@@ -264,6 +271,15 @@ export default function MesaRoomPage({ params }: { params: { id: string } }) {
               ))}
             </div>
           </div>
+
+          <TableNpcs
+            tableId={params.id}
+            isMaster={iAmMaster}
+            npcs={tableNpcs}
+            onChange={loadTable}
+          />
+
+          <MusicPlayer tableId={params.id} isMaster={iAmMaster} />
 
           {/* Log de rolagens */}
           <div className="card p-5">
