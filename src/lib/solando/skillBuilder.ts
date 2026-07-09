@@ -226,3 +226,78 @@ export function buildSkill(input: SkillBuildInput): SkillBuildResult {
     warnings,
   };
 }
+
+// ---------------------------------------------------------------------------
+// PAGAMENTO MISTO — "score de entropia" pago com Entropia + Vida + Sanidade +
+// debuffs auto-impostos (ex.: -5 em pontaria por 1 turno = -5 de custo).
+// A regra é livre: o jogador combina como quiser. O sistema só ALERTA se o
+// plano não cobre (ou passa) o custo — nunca trava.
+// ---------------------------------------------------------------------------
+
+export interface SkillDebuff {
+  id: string;
+  /** Descrição do que o jogador aceita (ex.: "-5 em Pontaria por 1 turno"). */
+  label: string;
+  /** Quanto de custo esse debuff abate (1:1). */
+  amount: number;
+}
+
+export interface SkillCostPlan {
+  /** Custo pago com Entropia (mana). */
+  entropy: number;
+  /** Custo pago com Vida. */
+  life: number;
+  /** Custo pago com Sanidade. */
+  sanity: number;
+  /** Debuffs auto-impostos que abatem o custo. */
+  debuffs: SkillDebuff[];
+}
+
+export interface CostPlanResult {
+  /** Custo bruto (score de entropia da skill). */
+  score: number;
+  /** Total abatido por debuffs auto-impostos. */
+  discount: number;
+  /** Total pago em recursos (entropia + vida + sanidade). */
+  resourcesPaid: number;
+  /** Cobertura total = recursos + desconto. */
+  covered: number;
+  /** score - covered. >0 falta; <0 sobra. */
+  remaining: number;
+  warnings: string[];
+}
+
+/** Plano padrão: paga tudo com Entropia. */
+export function defaultCostPlan(score: number): SkillCostPlan {
+  return { entropy: Math.max(0, score), life: 0, sanity: 0, debuffs: [] };
+}
+
+/** Avalia um plano de pagamento contra o score da skill (só informativo). */
+export function evaluateCostPlan(score: number, plan: SkillCostPlan): CostPlanResult {
+  const discount = plan.debuffs.reduce((s, d) => s + (d.amount || 0), 0);
+  const resourcesPaid = (plan.entropy || 0) + (plan.life || 0) + (plan.sanity || 0);
+  const covered = resourcesPaid + discount;
+  const remaining = score - covered;
+
+  const warnings: string[] = [];
+  if (remaining > 0) {
+    warnings.push(`Faltam ${remaining} para cobrir o custo (ajuste entropia/vida/sanidade ou some um debuff).`);
+  } else if (remaining < 0) {
+    warnings.push(`Você está pagando ${-remaining} a mais do que o custo (tudo bem — é sua escolha).`);
+  }
+  if (plan.life > 0) warnings.push("Pagar com Vida é arriscado: pode te derrubar em combate.");
+  if (discount > score * 0.6 && score > 0) {
+    warnings.push("A maior parte do custo veio de debuffs — o Mestre deve validar se está justo.");
+  }
+  return { score, discount, resourcesPaid, covered, remaining, warnings };
+}
+
+/** Resumo textual do plano para salvar na descrição da skill. */
+export function costPlanSummary(plan: SkillCostPlan): string {
+  const parts: string[] = [];
+  if (plan.entropy) parts.push(`${plan.entropy} Entropia`);
+  if (plan.life) parts.push(`${plan.life} Vida`);
+  if (plan.sanity) parts.push(`${plan.sanity} Sanidade`);
+  for (const d of plan.debuffs) parts.push(d.label || `-${d.amount} de custo`);
+  return parts.join(" + ");
+}

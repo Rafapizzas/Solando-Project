@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Character, Skill, skillSlots } from "@/lib/solando/character";
 import { uid } from "@/lib/storage";
 import { useAuth } from "@/lib/auth";
+import { SkillCostPlanner } from "@/components/SkillCostPlanner";
 import {
   SharedSkill,
   getSharedSkills,
@@ -15,8 +16,11 @@ import {
   BuilderEffect,
   SKILL_EFFECTS,
   SkillArea,
+  SkillCostPlan,
   SkillEffectKind,
   buildSkill,
+  costPlanSummary,
+  defaultCostPlan,
 } from "@/lib/solando/skillBuilder";
 
 interface TabProps {
@@ -70,6 +74,8 @@ export function SkillsTab({ character, patch }: TabProps) {
       effects: sk.effects,
       area: sk.area,
       passive: sk.passive,
+      score: sk.score,
+      costPlan: sk.costPlan,
     };
     patch({ skills: [...character.skills, skill] });
     setFlash(`"${sk.name}" importada para a ficha.`);
@@ -423,8 +429,15 @@ function SkillBuilder({ onCreate }: { onCreate: (skill: Skill) => void }) {
   const [effects, setEffects] = useState<BuilderEffect[]>([]);
   const [area, setArea] = useState<SkillArea>("unico");
   const [passive, setPassive] = useState(false);
+  const [plan, setPlan] = useState<SkillCostPlan>(defaultCostPlan(0));
+  const [planTouched, setPlanTouched] = useState(false);
 
   const result = buildSkill({ effects, area, passive, ups: 0 });
+
+  // Enquanto o jogador não mexe no plano, a Entropia acompanha o score.
+  useEffect(() => {
+    if (!planTouched) setPlan((p) => ({ ...p, entropy: result.totalCost }));
+  }, [result.totalCost, planTouched]);
 
   function addEffect(kind: SkillEffectKind) {
     const def = SKILL_EFFECTS.find((e) => e.kind === kind)!;
@@ -445,11 +458,16 @@ function SkillBuilder({ onCreate }: { onCreate: (skill: Skill) => void }) {
       })
       .join(" · ");
     const areaLabel = AREA_OPTIONS.find((a) => a.key === area)!.label;
+    const payment = costPlanSummary(plan);
     onCreate({
       id: uid("skill"),
       name: name.trim() || "Skill personalizada",
-      cost: result.totalCost,
-      description: `${desc}${desc ? " · " : ""}${areaLabel}${passive ? " · Passiva" : ""}`,
+      cost: plan.entropy,
+      score: result.totalCost,
+      costPlan: plan,
+      description: `${desc}${desc ? " · " : ""}${areaLabel}${passive ? " · Passiva" : ""}${
+        payment ? ` · Custo: ${payment}` : ""
+      }`,
       effects,
       area,
       passive,
@@ -548,18 +566,17 @@ function SkillBuilder({ onCreate }: { onCreate: (skill: Skill) => void }) {
         </label>
       </div>
 
-      <div className="flex items-center justify-between rounded-xl border border-mente/30 bg-mente/5 p-4">
-        <div>
-          <div className="text-xs text-zinc-400">Custo calculado</div>
-          <div className="text-3xl font-black text-mente-soft">
-            {result.totalCost}
-            <span className="text-sm text-zinc-500"> de Entropia</span>
-          </div>
-        </div>
-        <button className="btn-primary" onClick={create}>
-          Adicionar à ficha
-        </button>
-      </div>
+      <SkillCostPlanner
+        score={result.totalCost}
+        plan={plan}
+        onChange={(p) => {
+          setPlan(p);
+          setPlanTouched(true);
+        }}
+      />
+      <button className="btn-primary w-full" onClick={create}>
+        Adicionar à ficha
+      </button>
 
       {result.warnings.length > 0 && (
         <ul className="space-y-1 text-xs text-sol-soft">

@@ -29,6 +29,7 @@ import {
   resolveClass,
 } from "./customContent";
 import { INITIAL_COMPETENCE_POINTS } from "./competences";
+import type { SkillCostPlan } from "./skillBuilder";
 
 export type Attributes = Record<AttributeKey, number>;
 
@@ -53,6 +54,10 @@ export interface Skill {
   area?: string;
   passive?: boolean;
   ups?: number;
+  /** Score de entropia (custo bruto calculado dos efeitos). */
+  score?: number;
+  /** Plano de pagamento misto do custo (entropia/vida/sanidade/debuffs). */
+  costPlan?: SkillCostPlan;
 }
 
 export interface Talent {
@@ -244,23 +249,40 @@ const ATTR_NAME_TO_KEY: Record<string, AttributeKey> = {
 };
 
 /**
- * Bônus de atributo concedido por TALENTOS selecionados. Só considera talentos
- * cujo efeito é um bônus PERMANENTE no formato "+N de <Atributo>." (ex.: Arrojado
- * → Aspecto, Super Força → Força). Efeitos temporários/condicionais (que gastam
- * Entropia, duram "por 1 turno" ou são de dano/dado) NÃO entram no cálculo.
+ * Bônus de atributo concedido por TALENTOS selecionados. Considera talentos
+ * cujo efeito é um bônus PERMANENTE de atributo, aceitando os formatos:
+ *   "+2 de Aspecto."                     (Arrojado, Super Força…)
+ *   "+4 Força/Destreza/Constituição, …"  (Poderes de Lobisomem — barra = cada um)
+ *   "+4 de Força ou Poder"               (escolha → aplica a ambos como referência)
+ * Efeitos temporários/condicionais (que gastam Entropia, duram "por 1 turno",
+ * dão dano/dado, defesa, regeneração, resistência) NÃO entram no cálculo.
  */
 export function talentAttrBonus(character: Character): Attributes {
   const bonus = emptyAttributes();
   for (const t of character.talents ?? []) {
     const effect = (t.description ?? "").trim();
-    // Ignora efeitos temporários/condicionais (não somam atributo permanente).
-    if (/entropia|turno|de dano|no dado/i.test(effect)) continue;
-    // Casa apenas "+N de <Atributo>" como efeito único e permanente.
-    const m = effect.match(/^\+(\d+)\s+de\s+([A-Za-zÀ-ú]+)\.?$/);
-    if (!m) continue;
-    const key = ATTR_NAME_TO_KEY[normalizeAttrName(m[2])];
-    if (!key) continue;
-    bonus[key] += Number(m[1]);
+    // Quebra o efeito em cláusulas independentes.
+    for (const raw of effect.split(/[,;.]/)) {
+      const clause = raw.trim();
+      if (!clause) continue;
+      // Ignora cláusulas que não sejam bônus permanente de atributo.
+      if (/entropia|turno|no dado|de dano|dano de|defesa|regenera|cura|resist|garras|esquiva|teste/i.test(clause))
+        continue;
+      // "+N [de] <Attr>[/<Attr>/…]" ou "… ou <Attr>".
+      const m = clause.match(/^\+(\d+)\s+(?:de\s+)?(.+)$/);
+      if (!m) continue;
+      const amount = Number(m[1]);
+      const parts = m[2]
+        .split(/\s*\/\s*|\s+ou\s+/i)
+        .map((p) => normalizeAttrName(p.trim()))
+        .filter(Boolean);
+      const keys = parts
+        .map((p) => ATTR_NAME_TO_KEY[p])
+        .filter((k): k is AttributeKey => Boolean(k));
+      // Só aplica se TODOS os tokens forem nomes de atributo (evita "+4 dano de garras").
+      if (keys.length === 0 || keys.length !== parts.length) continue;
+      for (const k of keys) bonus[k] += amount;
+    }
   }
   return bonus;
 }

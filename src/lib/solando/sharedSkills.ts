@@ -23,6 +23,9 @@ export interface SharedSkill {
   effects?: Skill["effects"];
   area?: string;
   passive?: boolean;
+  /** Score de entropia (custo bruto) e plano de pagamento misto. */
+  score?: number;
+  costPlan?: Skill["costPlan"];
   /** Nome de exibição do autor (perfil/conta). */
   author?: string;
   createdAt: number;
@@ -96,6 +99,8 @@ export async function publishSkill(skill: Skill, author?: string): Promise<Share
     effects: skill.effects,
     area: skill.area,
     passive: skill.passive,
+    score: skill.score,
+    costPlan: skill.costPlan,
     author,
     createdAt: Date.now(),
   };

@@ -6,13 +6,17 @@ import { AttributeKey } from "@/lib/solando/rules";
 import { useAuth } from "@/lib/auth";
 import { uid } from "@/lib/storage";
 import type { Skill } from "@/lib/solando/character";
+import { SkillCostPlanner } from "@/components/SkillCostPlanner";
 import {
   AREA_OPTIONS,
   BuilderEffect,
   SKILL_EFFECTS,
   SkillArea,
+  SkillCostPlan,
   SkillEffectKind,
   buildSkill,
+  costPlanSummary,
+  defaultCostPlan,
 } from "@/lib/solando/skillBuilder";
 import {
   SharedSkill,
@@ -342,11 +346,17 @@ function SkillForge() {
   const [effects, setEffects] = useState<BuilderEffect[]>([]);
   const [area, setArea] = useState<SkillArea>("unico");
   const [passive, setPassive] = useState(false);
+  const [plan, setPlan] = useState<SkillCostPlan>(defaultCostPlan(0));
+  const [planTouched, setPlanTouched] = useState(false);
   const [mine, setMine] = useState<SharedSkill[]>([]);
   const [flash, setFlash] = useState("");
   const [saving, setSaving] = useState(false);
 
   const result = buildSkill({ effects, area, passive, ups: 0 });
+
+  useEffect(() => {
+    if (!planTouched) setPlan((p) => ({ ...p, entropy: result.totalCost }));
+  }, [result.totalCost, planTouched]);
 
   function reload() {
     setMine(getSharedSkills());
@@ -378,12 +388,15 @@ function SkillForge() {
         })
         .join(" · ");
       const areaLabel = AREA_OPTIONS.find((a) => a.key === area)!.label;
+      const payment = costPlanSummary(plan);
       const skill: Skill = {
         id: uid("skill"),
         name: name.trim(),
-        cost: result.totalCost,
+        cost: plan.entropy,
+        score: result.totalCost,
+        costPlan: plan,
         description:
-          [notes.trim(), desc, areaLabel, passive ? "Passiva" : ""]
+          [notes.trim(), desc, areaLabel, passive ? "Passiva" : "", payment ? `Custo: ${payment}` : ""]
             .filter(Boolean)
             .join(" · "),
         effects,
@@ -399,6 +412,8 @@ function SkillForge() {
       setEffects([]);
       setArea("unico");
       setPassive(false);
+      setPlan(defaultCostPlan(0));
+      setPlanTouched(false);
     } finally {
       setSaving(false);
     }
@@ -518,6 +533,15 @@ function SkillForge() {
             </p>
           ))}
         </div>
+
+        <SkillCostPlanner
+          score={result.totalCost}
+          plan={plan}
+          onChange={(p) => {
+            setPlan(p);
+            setPlanTouched(true);
+          }}
+        />
 
         <button className="btn-primary w-full" onClick={save} disabled={saving || !name.trim()}>
           {saving ? "Forjando…" : "Forjar e publicar skill"}
